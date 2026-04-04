@@ -255,6 +255,16 @@ function parseCoordinatesToLatLngs(coordinatesStr: string): [number, number][] {
   }
 }
 
+function isValidGPSCoordinates(coords: [number, number][]): boolean {
+  if (!coords || coords.length === 0) return false;
+
+  return coords.every(([lat, lng]) => {
+    const isValidLat = lat >= -90 && lat <= 90;
+    const isValidLng = lng >= -180 && lng <= 180;
+    return isValidLat && isValidLng;
+  });
+}
+
 function mapApiZone(zone: any): PlantingZone {
   return {
     id: String(zone.id),
@@ -495,6 +505,7 @@ export default function App() {
     name: string;
     role?: string;
     admin_id?: string | number;
+    managed_lot?: string;
   } | null>(() => {
     // Try to restore currentUser from localStorage on mount
     return loadCurrentUserFromStorage();
@@ -607,14 +618,22 @@ export default function App() {
         if (currentUser?.id && currentUser?.role === "admin") {
           const apiFarmers = await farmAPI.getFarmers(String(currentUser.id));
           if (Array.isArray(apiFarmers)) {
-            setFarmers(apiFarmers.length ? apiFarmers.map(mapApiFarmer) : []);
+            const mapped = apiFarmers.length
+              ? apiFarmers.map(mapApiFarmer)
+              : [];
+            console.log("Loaded farmers:", mapped);
+            setFarmers(mapped);
           } else {
             setFarmers([]);
           }
         } else {
           const apiFarmers = await farmAPI.getFarmers();
           if (Array.isArray(apiFarmers)) {
-            setFarmers(apiFarmers.length ? apiFarmers.map(mapApiFarmer) : []);
+            const mapped = apiFarmers.length
+              ? apiFarmers.map(mapApiFarmer)
+              : [];
+            console.log("Loaded farmers:", mapped);
+            setFarmers(mapped);
           } else {
             setFarmers([]);
           }
@@ -935,17 +954,12 @@ export default function App() {
           <OnboardHTXScreen
             pendingRegistration={pendingAdminRegistration}
             onComplete={async (admin) => {
-              if (admin) {
-                setCurrentUser({
-                  id: admin.id,
-                  phone: admin.phone,
-                  email: admin.google_email || undefined,
-                  name: admin.name || admin.phone || "HTX",
-                  role: "admin",
-                });
-              }
+              // Don't set currentUser - wait for sysadmin approval
+              // User must login again after approval
               setPendingAdminRegistration(null);
-              navigate("/admin");
+              setTimeout(() => {
+                navigate("/", { replace: true });
+              }, 5000); // Redirect to landing after 5 seconds
             }}
           />
         }
@@ -1081,7 +1095,7 @@ export default function App() {
           currentUser ? (
             <div className="min-h-screen bg-gray-50 font-sans text-gray-900 pb-20">
               {/* Header */}
-              <header className="bg-emerald-600 text-white p-4 sticky top-0 z-10 shadow-md flex items-center justify-between">
+              <header className="bg-emerald-600 text-white p-4 sticky top-0 z-50 shadow-md flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   {activeTab === "diary" && view === "add" && (
                     <button
@@ -1221,6 +1235,7 @@ function LoginScreen({
     phone: string;
     name: string;
     admin_id?: string | number;
+    managed_lot?: string;
   }) => void;
   onBack: () => void;
 }) {
@@ -1238,6 +1253,7 @@ function LoginScreen({
         phone: farmer.phone || phone,
         name: farmer.full_name || farmer.fullName || "Nông dân",
         admin_id: farmer.admin,
+        managed_lot: farmer.managed_lot || farmer.managedLot || "",
       });
     } catch (err: any) {
       setError(err?.message || "Đăng nhập thất bại");
@@ -1533,7 +1549,7 @@ function AddLogForm({
   lotOptions,
 }: {
   initialData: TaskConfig | null;
-  currentUser: { name: string; id?: string | number };
+  currentUser: { name: string; id?: string | number; managed_lot?: string };
   onSave: (log: FarmLog) => void;
   onCancel: () => void;
   tasksConfig: TaskConfig[];
@@ -1541,6 +1557,11 @@ function AddLogForm({
   stageOptions: StageOption[];
   lotOptions: LotOption[];
 }) {
+  // Filter lotOptions to show only the farmer's managed lot
+  const farmerLotOptions = currentUser.managed_lot
+    ? lotOptions.filter((lot) => lot.name === currentUser.managed_lot)
+    : lotOptions;
+
   const defaultTask = initialData?.defaultValues?.task || "";
   const isTaskInList = tasksList.includes(defaultTask);
 
@@ -1555,7 +1576,7 @@ function AddLogForm({
   const [formData, setFormData] = useState<Partial<FarmLog>>({
     executor: currentUser.name,
     stage: stageOptions[0]?.id || "",
-    lot: lotOptions[0]?.id || "",
+    lot: farmerLotOptions[0]?.id || "",
     datetime: new Date().toISOString().slice(0, 16),
     task: defaultTask || tasksList[0] || "",
     pest: initialData?.defaultValues?.pest || "",
@@ -1598,10 +1619,10 @@ function AddLogForm({
   }, [formData.task]);
 
   useEffect(() => {
-    if (!formData.lot && lotOptions.length > 0) {
-      setFormData((prev) => ({ ...prev, lot: lotOptions[0].id }));
+    if (!formData.lot && farmerLotOptions.length > 0) {
+      setFormData((prev) => ({ ...prev, lot: farmerLotOptions[0].id }));
     }
-  }, [lotOptions, formData.lot]);
+  }, [farmerLotOptions, formData.lot]);
 
   const handleScanMaterial = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0) return;
@@ -1808,10 +1829,10 @@ function AddLogForm({
               onChange={handleChange}
               className="w-full rounded-lg border-gray-300 border p-2.5 focus:ring-emerald-500 focus:border-emerald-500 bg-white"
             >
-              {lotOptions.length === 0 ? (
+              {farmerLotOptions.length === 0 ? (
                 <option value="">Chưa có lô</option>
               ) : (
-                lotOptions.map((option) => (
+                farmerLotOptions.map((option) => (
                   <option key={option.id} value={option.id}>
                     {option.name}
                   </option>
@@ -2184,21 +2205,26 @@ function ReportScreen({
   lotOptions,
   onAddReport,
 }: {
-  currentUser: { id?: string | number; name: string };
+  currentUser: { id?: string | number; name: string; managed_lot?: string };
   lotOptions: LotOption[];
   onAddReport: (report: IncidentReport) => void;
 }) {
+  // Filter lotOptions to show only the farmer's managed lot
+  const farmerLotOptions = currentUser.managed_lot
+    ? lotOptions.filter((lot) => lot.name === currentUser.managed_lot)
+    : lotOptions;
+
   const [reportType, setReportType] = useState("Sâu bệnh");
   const [description, setDescription] = useState("");
-  const [lot, setLot] = useState(lotOptions[0]?.id || "");
+  const [lot, setLot] = useState(farmerLotOptions[0]?.id || "");
   const [images, setImages] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
-    if (!lot && lotOptions.length > 0) {
-      setLot(lotOptions[0].id);
+    if (!lot && farmerLotOptions.length > 0) {
+      setLot(farmerLotOptions[0].id);
     }
-  }, [lotOptions, lot]);
+  }, [farmerLotOptions, lot]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -2225,7 +2251,7 @@ function ReportScreen({
       alert("Báo cáo sự cố đã được gửi thành công!");
       setDescription("");
       setImages([]);
-      setLot(lotOptions[0]?.id || "");
+      setLot(farmerLotOptions[0]?.id || "");
     } catch (error: any) {
       console.error("Không thể gửi báo cáo sự cố:", error);
       alert(error?.message || "Gửi báo cáo thất bại. Vui lòng thử lại.");
@@ -2268,10 +2294,10 @@ function ReportScreen({
               onChange={(e) => setLot(e.target.value)}
               className="w-full rounded-lg border-gray-300 border p-2.5 focus:ring-emerald-500 focus:border-emerald-500 bg-white"
             >
-              {lotOptions.length === 0 ? (
+              {farmerLotOptions.length === 0 ? (
                 <option value="">Chưa có lô</option>
               ) : (
-                lotOptions.map((l) => (
+                farmerLotOptions.map((l) => (
                   <option key={l.id} value={l.id}>
                     {l.name}
                   </option>
@@ -2365,7 +2391,12 @@ function SettingsScreen({
   currentUser,
   onLogout,
 }: {
-  currentUser: { name: string; admin_id?: string | number } | null;
+  currentUser: {
+    name: string;
+    admin_id?: string | number;
+    managed_lot?: string;
+    role?: string;
+  } | null;
   onLogout: () => void;
 }) {
   const [farmData, setFarmData] = useState<any>(null);
@@ -2413,8 +2444,32 @@ function SettingsScreen({
       }
       try {
         console.log("Tải bản đồ cho admin_id:", currentUser.admin_id);
-        const zones = await farmAPI.getPlantingZones(currentUser.admin_id);
+        let zones = await farmAPI.getPlantingZones(currentUser.admin_id);
         console.log("Bản đồ lô canh tác nhận được:", zones);
+
+        // If user is a farmer, filter zones to show only the zone containing their managed lot
+        if (currentUser.managed_lot && !currentUser.role) {
+          console.log(
+            "Farmer mode - filter for managed_lot:",
+            currentUser.managed_lot,
+          );
+          zones = zones.filter((zone: any) =>
+            zone.lots?.some((lot: any) => lot.name === currentUser.managed_lot),
+          );
+          console.log("Filtered zones for farmer:", zones);
+
+          // Log lot details including coordinates and latLngs
+          zones.forEach((zone: any) => {
+            zone.lots?.forEach((lot: any) => {
+              console.log(`Lot ${lot.name}:`, {
+                area: lot.area,
+                coordinates: lot.coordinates,
+                latLngs: lot.latLngs,
+              });
+            });
+          });
+        }
+
         setPlantingZones(zones || []);
       } catch (error: any) {
         console.warn("Không thể tải bản đồ lô canh tác:", error);
@@ -2424,7 +2479,7 @@ function SettingsScreen({
       }
     };
     fetchPlantingZones();
-  }, [currentUser?.admin_id]);
+  }, [currentUser?.admin_id, currentUser?.managed_lot, currentUser?.role]);
 
   const handleCertificateUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -2451,6 +2506,30 @@ function SettingsScreen({
       setUploadingCert(false);
     }
   };
+
+  // Inject CSS to ensure header stays on top of Leaflet map
+  useEffect(() => {
+    const style = document.createElement("style");
+    style.textContent = `
+      .leaflet-container {
+        z-index: 1 !important;
+      }
+      .leaflet-popup {
+        z-index: 2 !important;
+      }
+      .leaflet-control {
+        z-index: 2 !important;
+      }
+      .leaflet-top, .leaflet-bottom {
+        z-index: 2 !important;
+      }
+    `;
+    document.head.appendChild(style);
+    return () => {
+      document.head.removeChild(style);
+    };
+  }, []);
+
   return (
     <div className="space-y-5">
       <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 flex items-center gap-4">
@@ -2543,77 +2622,138 @@ function SettingsScreen({
               <p>Đang tải bản đồ lô canh tác...</p>
             </div>
           ) : plantingZones.length > 0 ? (
-            <div className="space-y-4">
-              {plantingZones.map((zone: any, zoneIdx: number) => {
-                const colors = [
-                  {
-                    bg: "bg-emerald-200",
-                    border: "border-emerald-400",
-                    text: "text-emerald-800",
-                  },
-                  {
-                    bg: "bg-blue-200",
-                    border: "border-blue-400",
-                    text: "text-blue-800",
-                  },
-                  {
-                    bg: "bg-amber-200",
-                    border: "border-amber-400",
-                    text: "text-amber-800",
-                  },
-                  {
-                    bg: "bg-rose-200",
-                    border: "border-rose-400",
-                    text: "text-rose-800",
-                  },
-                  {
-                    bg: "bg-violet-200",
-                    border: "border-violet-400",
-                    text: "text-violet-800",
-                  },
-                ];
-                const color = colors[zoneIdx % colors.length];
+            <div className="space-y-6">
+              {plantingZones.map((zone: any) => {
+                // For farmers, only show their managed lot
+                let displayLots = zone.lots || [];
+                if (currentUser?.managed_lot && !currentUser?.role) {
+                  displayLots = displayLots.filter(
+                    (lot: any) => lot.name === currentUser.managed_lot,
+                  );
+                }
 
                 return (
                   <div key={zone.id}>
-                    <h4 className="font-bold text-gray-800 mb-2">
-                      {zone.name || `Vùng ${zone.id}`}
-                    </h4>
-                    <div className="text-sm text-gray-600 mb-2">
-                      <span className="font-medium">
-                        {zone.crop_type || "Chưa hoàn thành"}
-                      </span>
-                      {zone.area && (
-                        <span className="ml-3">Diện tích: {zone.area} ha</span>
-                      )}
+                    <div className="mb-3">
+                      <h4 className="font-bold text-gray-800 text-base">
+                        {zone.name}
+                      </h4>
+                      <p className="text-sm text-gray-500">
+                        Cây trồng: {zone.crop_type}
+                      </p>
                     </div>
-                    <div className="aspect-video bg-emerald-50 rounded-lg border border-emerald-100 flex items-center justify-center relative overflow-auto p-2 z-0">
-                      <div
-                        className="absolute inset-0 opacity-20"
-                        style={{
-                          backgroundImage:
-                            "radial-gradient(#10b981 1px, transparent 1px)",
-                          backgroundSize: "10px 10px",
-                        }}
-                      ></div>
-                      <div className="relative w-full h-full flex flex-wrap gap-2 content-start p-2 z-0">
-                        {zone.lots && zone.lots.length > 0 ? (
-                          zone.lots.map((lot: any, idx: number) => (
+
+                    {displayLots && displayLots.length > 0 ? (
+                      <div className="space-y-4">
+                        {displayLots.map((lot: any) => {
+                          // Use latLngs if available, otherwise try to parse from coordinates
+                          const lotCoordinates =
+                            lot.latLngs ||
+                            (lot.coordinates
+                              ? parseCoordinatesToLatLngs(lot.coordinates)
+                              : null);
+
+                          const hasValidCoordinates =
+                            lotCoordinates &&
+                            isValidGPSCoordinates(lotCoordinates);
+
+                          console.log(`🗺️ FARMER LOT DISPLAY - ${lot.name}:`, {
+                            area: lot.area,
+                            hasLatLngs: !!lot.latLngs,
+                            latLngs: lot.latLngs,
+                            hasCoordinates: !!lot.coordinates,
+                            coordinates: lot.coordinates,
+                            parsed: lotCoordinates,
+                            hasValidCoordinates,
+                            lotFullData: lot,
+                          });
+
+                          return (
                             <div
                               key={lot.id}
-                              className={`${color.bg} rounded border-2 ${color.border} flex items-center justify-center font-bold text-sm ${color.text} shadow-sm flex-grow`}
-                              style={{ minHeight: "60px" }}
+                              className="bg-emerald-50 rounded-lg border border-emerald-200 overflow-hidden"
                             >
-                              {lot.name || `Lô ${idx + 1}`}
+                              <div className="p-3 border-b border-emerald-200 bg-white">
+                                <div className="flex justify-between items-start">
+                                  <div>
+                                    <h5 className="font-bold text-gray-800">
+                                      {lot.name}
+                                    </h5>
+                                    <p className="text-xs text-gray-500">
+                                      Diện tích: {lot.area || "N/A"} ha
+                                    </p>
+                                  </div>
+                                </div>
+                              </div>
+
+                              {hasValidCoordinates ? (
+                                <div className="h-72 w-full relative overflow-hidden">
+                                  <MapContainerAny
+                                    center={lotCoordinates[0] || [10.5, 107.4]}
+                                    zoom={18}
+                                    style={{
+                                      height: "100%",
+                                      width: "100%",
+                                    }}
+                                  >
+                                    <TileLayerAny
+                                      attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                                      url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                                      maxZoom={22}
+                                      maxNativeZoom={19}
+                                    />
+
+                                    <PolygonAny
+                                      positions={lotCoordinates}
+                                      color="#10b981"
+                                      fillColor="#10b981"
+                                      fillOpacity={0.2}
+                                      weight={2}
+                                    >
+                                      <Popup>
+                                        <div className="text-sm font-bold text-emerald-800">
+                                          {lot.name}
+                                        </div>
+                                        <div className="text-xs text-gray-600 mt-1">
+                                          Diện tích: {lot.area} ha
+                                        </div>
+                                      </Popup>
+                                    </PolygonAny>
+                                  </MapContainerAny>
+                                </div>
+                              ) : (
+                                <div className="h-72 flex items-center justify-center bg-emerald-50 border-t border-emerald-100">
+                                  <div className="text-center space-y-3">
+                                    <div>
+                                      <MapPin
+                                        size={32}
+                                        className="text-amber-400 mx-auto mb-2"
+                                      />
+                                      <p className="text-sm font-medium text-gray-600">
+                                        {lotCoordinates &&
+                                        lotCoordinates.length > 0
+                                          ? "Tọa độ không hợp lệ"
+                                          : "Chưa có tọa độ lô đất"}
+                                      </p>
+                                      <p className="text-xs text-gray-500 mt-2">
+                                        {lotCoordinates &&
+                                        lotCoordinates.length > 0
+                                          ? "Tọa độ này không phải GPS thực"
+                                          : "HTX cần cập nhật tọa độ cho lô này"}
+                                      </p>
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
                             </div>
-                          ))
-                        ) : (
-                          <div className="text-gray-500 text-sm">
-                            Không có lô canh tác
-                          </div>
-                        )}
+                          );
+                        })}
                       </div>
-                    </div>
+                    ) : (
+                      <div className="text-center py-6 text-gray-500 text-sm bg-emerald-50 rounded-lg border border-emerald-100">
+                        Không có lô canh tác trong vùng này
+                      </div>
+                    )}
                   </div>
                 );
               })}
@@ -3681,6 +3821,7 @@ function OnboardHTXScreen({
   const [representative, setRepresentative] = useState("");
   const [fileName, setFileName] = useState("");
   const [error, setError] = useState("");
+  const [registrationSuccess, setRegistrationSuccess] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -3708,11 +3849,39 @@ function OnboardHTXScreen({
       }
 
       const admin = await authAPI.adminRegister(payload);
+      setRegistrationSuccess(true);
       onComplete(admin);
     } catch (err: any) {
       setError(err?.message || "Đăng ký thất bại");
     }
   };
+
+  // Success screen while awaiting approval
+  if (registrationSuccess) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex flex-col justify-center items-center p-4">
+        <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-100 w-full max-w-lg text-center">
+          <div className="mb-6">
+            <div className="inline-flex items-center justify-center w-16 h-16 bg-amber-100 rounded-full mb-4">
+              <Clock size={32} className="text-amber-600" />
+            </div>
+            <h1 className="text-2xl font-bold text-gray-800 mb-2">
+              Đăng ký thành công!
+            </h1>
+            <p className="text-gray-600 mb-4">
+              Hợp tác xã <strong>{htxName}</strong> của bạn đã được tạo
+            </p>
+          </div>
+
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6 text-left">
+            <p className="text-sm text-amber-900 font-medium mb-2">
+              ⏳ Chúng tôi đang xử lý đơn của bạn
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col justify-center items-center p-4">
@@ -4130,6 +4299,9 @@ function FarmerManagementScreen({
   const [selectedZoneId, setSelectedZoneId] = useState<string>("");
   const [error, setError] = useState("");
   const [admins, setAdmins] = useState<any[]>([]);
+  const [validationErrors, setValidationErrors] = useState<
+    Record<string, string>
+  >({});
 
   useEffect(() => {
     const fetchAdmins = async () => {
@@ -4145,14 +4317,87 @@ function FarmerManagementScreen({
     fetchAdmins();
   }, []);
 
+  // Clear validation errors when switching views
+  useEffect(() => {
+    if (view === "add" || view === "edit") {
+      setValidationErrors({});
+    }
+  }, [view]);
+
+  // Validation functions
+  const isValidFullName = (name: string): boolean => {
+    if (!name || name.trim().length === 0) return false;
+    // Chỉ check: không có số, ký tự không hợp lệ
+    // Cho phép: chữ cái, khoảng trắng, dấu phẩy, gạch ngang, apostrophe
+    const trimmed = name.trim();
+    // Không được chứa số
+    if (/\d/.test(trimmed)) return false;
+    // Không được chứa ký tự đặc biệt ngoài: dấu phẩy, gạch ngang, apostrophe
+    if (/[!@#$%^&*()+=\[\]{};:"\\|,.<>\/?]/.test(trimmed)) return false;
+    return true;
+  };
+
+  const isValidPhone = (phone: string): boolean => {
+    if (!phone) return false;
+    // Đúng 10 số
+    const cleaned = String(phone).replace(/\D/g, "");
+    return /^\d{10}$/.test(cleaned);
+  };
+
+  const isValidCCCD = (cccd: string): boolean => {
+    if (!cccd) return false;
+    // CCCD phải là 12 số
+    const cleaned = String(cccd).replace(/\D/g, "");
+    return /^\d{12}$/.test(cleaned);
+  };
+
+  const isValidPin = (pin: string): boolean => {
+    if (!pin) return false;
+    // PIN phải là 4 số - remove non-digits like phone
+    const cleaned = String(pin).replace(/\D/g, "");
+    return /^\d{4}$/.test(cleaned);
+  };
+
+  const validateForm = (): boolean => {
+    const errors: Record<string, string> = {};
+
+    // Validation Họ tên
+    if (!newFarmer.fullName || !isValidFullName(newFarmer.fullName)) {
+      errors.fullName =
+        "⚠️ Họ tên chỉ được nhập chữ cái, không có số hoặc ký tự đặc biệt";
+    }
+
+    // Validation Số điện thoại
+    if (!newFarmer.phone) {
+      errors.phone = "⚠️ Vui lòng nhập số điện thoại";
+    } else if (!isValidPhone(newFarmer.phone)) {
+      errors.phone = "⚠️ Số điện thoại phải có đúng 10 số";
+    }
+
+    // Validation PIN
+    if (!newFarmer.pin) {
+      errors.pin = "⚠️ Vui lòng nhập mã PIN";
+    } else if (!isValidPin(newFarmer.pin)) {
+      errors.pin = "⚠️ Mã PIN phải có đúng 4 số";
+    }
+
+    // NOTE: CCCD validation removed - it's an optional field
+    // Input already limits to 12 digits, user can leave empty or enter partial value
+
+    setValidationErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
   const handleSaveFarmer = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // Validate required fields
-    if (!newFarmer.phone || !newFarmer.fullName) {
-      alert("Vui lòng nhập số điện thoại và họ tên");
+    // Validate form
+    if (!validateForm()) {
       return;
     }
+
+    console.log("handleSaveFarmer - newFarmer state:", newFarmer);
+    console.log("handleSaveFarmer - view:", view);
 
     const payload: any = {
       phone: newFarmer.phone,
@@ -4182,6 +4427,7 @@ function FarmerManagementScreen({
         if (!newFarmer.id) {
           alert("Lỗi: ID nông dân không hợp lệ");
           console.error("Edit mode but newFarmer.id is:", newFarmer.id);
+          console.error("Full newFarmer object:", newFarmer);
           return;
         }
 
@@ -4226,7 +4472,22 @@ function FarmerManagementScreen({
 
   const handleEdit = (farmer: Farmer) => {
     console.log("Editing farmer:", farmer);
-    setNewFarmer(farmer);
+    console.log("Farmer ID before setNewFarmer:", farmer.id);
+
+    // Clean data from database - remove any whitespace/formatting issues
+    const cleanedFarmer = {
+      ...farmer,
+      phone: farmer.phone ? String(farmer.phone).trim() : "",
+      pin: farmer.pin ? String(farmer.pin).trim() : "",
+      cccd: farmer.cccd ? String(farmer.cccd).trim() : "",
+      fullName: farmer.fullName ? String(farmer.fullName).trim() : "",
+    };
+
+    // CRITICAL: First clear all errors BEFORE setting new farmer
+    setValidationErrors({});
+
+    // Then set the farmer data
+    setNewFarmer(cleanedFarmer);
 
     // Find the zone that contains this lot
     if (farmer.managedLot) {
@@ -4245,6 +4506,7 @@ function FarmerManagementScreen({
     setView("list");
     setNewFarmer({});
     setSelectedZoneId("");
+    setValidationErrors({});
   };
 
   const selectedZone = zones.find((z) => z.id === selectedZoneId);
@@ -4270,7 +4532,10 @@ function FarmerManagementScreen({
                 Danh sách Nông dân
               </h2>
               <button
-                onClick={() => setView("add")}
+                onClick={() => {
+                  setView("add");
+                  setValidationErrors({});
+                }}
                 className="bg-emerald-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-emerald-700 transition-colors flex items-center gap-2"
               >
                 <Plus size={20} /> Thêm mới
@@ -4359,6 +4624,13 @@ function FarmerManagementScreen({
             <h2 className="text-xl font-bold text-gray-800 mb-6">
               {view === "edit" ? "Sửa thông tin Nông dân" : "Thêm Nông dân mới"}
             </h2>
+            {/* {view === "edit" && newFarmer.id && (
+              <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-700">
+                <p>
+                  <strong>ID Nông dân:</strong> {newFarmer.id}
+                </p>
+              </div>
+            )} */}
             <form onSubmit={handleSaveFarmer} className="space-y-4">
               <div className="grid sm:grid-cols-2 gap-4">
                 <div>
@@ -4369,12 +4641,21 @@ function FarmerManagementScreen({
                     type="text"
                     required
                     value={newFarmer.fullName || ""}
-                    onChange={(e) =>
-                      setNewFarmer({ ...newFarmer, fullName: e.target.value })
-                    }
-                    className="w-full rounded-lg border-gray-300 border p-2.5 focus:ring-emerald-500 focus:border-emerald-500"
+                    onChange={(e) => {
+                      setNewFarmer({ ...newFarmer, fullName: e.target.value });
+                      setValidationErrors({
+                        ...validationErrors,
+                        fullName: "",
+                      });
+                    }}
+                    className={`w-full rounded-lg border p-2.5 focus:ring-emerald-500 focus:border-emerald-500 ${validationErrors.fullName ? "border-red-400" : "border-gray-300"}`}
                     placeholder="VD: Nguyễn Văn A"
                   />
+                  {validationErrors.fullName && (
+                    <p className="text-red-500 text-xs mt-1">
+                      {validationErrors.fullName}
+                    </p>
+                  )}
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -4384,12 +4665,24 @@ function FarmerManagementScreen({
                     type="tel"
                     required
                     value={newFarmer.phone || ""}
-                    onChange={(e) =>
-                      setNewFarmer({ ...newFarmer, phone: e.target.value })
-                    }
-                    className="w-full rounded-lg border-gray-300 border p-2.5 focus:ring-emerald-500 focus:border-emerald-500"
-                    placeholder="SĐT đăng nhập"
+                    onChange={(e) => {
+                      const value = e.target.value
+                        .replace(/\D/g, "")
+                        .slice(0, 10);
+                      setNewFarmer({ ...newFarmer, phone: value });
+                      setValidationErrors({ ...validationErrors, phone: "" });
+                    }}
+                    className={`w-full rounded-lg border p-2.5 focus:ring-emerald-500 focus:border-emerald-500 ${validationErrors.phone ? "border-red-400" : "border-gray-300"}`}
+                    placeholder="10 số"
                   />
+                  {validationErrors.phone && (
+                    <p className="text-red-500 text-xs mt-1">
+                      {validationErrors.phone}
+                    </p>
+                  )}
+                  <p className="text-gray-400 text-xs mt-1">
+                    {newFarmer.phone?.length || 0}/10 số
+                  </p>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -4407,24 +4700,45 @@ function FarmerManagementScreen({
                         .replace(/\D/g, "")
                         .slice(0, 4);
                       setNewFarmer({ ...newFarmer, pin: value });
+                      setValidationErrors({ ...validationErrors, pin: "" });
                     }}
-                    className="w-full rounded-lg border-gray-300 border p-2.5 focus:ring-emerald-500 focus:border-emerald-500"
+                    className={`w-full rounded-lg border p-2.5 focus:ring-emerald-500 focus:border-emerald-500 ${validationErrors.pin ? "border-red-400" : "border-gray-300"}`}
                     placeholder="1234"
                   />
+                  {validationErrors.pin && (
+                    <p className="text-red-500 text-xs mt-1">
+                      {validationErrors.pin}
+                    </p>
+                  )}
+                  <p className="text-gray-400 text-xs mt-1">
+                    {newFarmer.pin?.length || 0}/4 số
+                  </p>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Số CCCD
+                    Số CCCD (12 số)
                   </label>
                   <input
                     type="text"
                     value={newFarmer.cccd || ""}
-                    onChange={(e) =>
-                      setNewFarmer({ ...newFarmer, cccd: e.target.value })
-                    }
-                    className="w-full rounded-lg border-gray-300 border p-2.5 focus:ring-emerald-500 focus:border-emerald-500"
-                    placeholder="Nhập CCCD"
+                    onChange={(e) => {
+                      const value = e.target.value
+                        .replace(/\D/g, "")
+                        .slice(0, 12);
+                      setNewFarmer({ ...newFarmer, cccd: value });
+                      setValidationErrors({ ...validationErrors, cccd: "" });
+                    }}
+                    className={`w-full rounded-lg border p-2.5 focus:ring-emerald-500 focus:border-emerald-500 ${validationErrors.cccd ? "border-red-400" : "border-gray-300"}`}
+                    placeholder="12 số CCCD"
                   />
+                  {validationErrors.cccd && (
+                    <p className="text-red-500 text-xs mt-1">
+                      {validationErrors.cccd}
+                    </p>
+                  )}
+                  <p className="text-gray-400 text-xs mt-1">
+                    {newFarmer.cccd?.length || 0}/12 số
+                  </p>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -4492,9 +4806,16 @@ function FarmerManagementScreen({
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2.5 bg-emerald-600 text-white font-medium hover:bg-emerald-700 rounded-lg transition-colors shadow-sm"
+                  disabled={
+                    view === "add"
+                      ? !newFarmer.fullName ||
+                        !newFarmer.phone ||
+                        !newFarmer.pin
+                      : false
+                  }
+                  className="px-5 py-2.5 bg-emerald-600 text-white font-medium hover:bg-emerald-700 rounded-lg transition-colors shadow-sm disabled:bg-gray-400 disabled:cursor-not-allowed"
                 >
-                  Lưu Nông dân
+                  {view === "edit" ? "Lưu Nông dân" : "Thêm Nông dân"}
                 </button>
               </div>
             </form>
@@ -5900,12 +6221,30 @@ function ProcessManagementScreen({
     taskCategories[0]?.id || "",
   );
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [taskIcons, setTaskIcons] = useState<any[]>([]);
+  const [iconsLoading, setIconsLoading] = useState(true);
 
   useEffect(() => {
     if (!selectedCategoryId && taskCategories.length > 0) {
       setSelectedCategoryId(taskCategories[0].id);
     }
   }, [taskCategories, selectedCategoryId]);
+
+  useEffect(() => {
+    const loadIcons = async () => {
+      try {
+        setIconsLoading(true);
+        const icons = await farmAPI.getTaskIcons();
+        setTaskIcons(icons || []);
+      } catch (error) {
+        console.warn("Không thể tải các icon:", error);
+        setTaskIcons([]);
+      } finally {
+        setIconsLoading(false);
+      }
+    };
+    loadIcons();
+  }, []);
 
   const handleEdit = (task: TaskConfig) => {
     setCurrentTask(task);
@@ -5914,10 +6253,13 @@ function ProcessManagementScreen({
 
   const handleAdd = () => {
     const categoryId = taskCategories[0]?.id || "";
+    const defaultIconName =
+      taskIcons.length > 0 ? taskIcons[0].icon_name : "Leaf";
     setCurrentTask({
       id: `task_${Date.now()}`,
       name: "",
-      icon: Leaf,
+      iconName: defaultIconName,
+      icon: resolveTaskIcon(defaultIconName),
       color: "bg-emerald-100 text-emerald-600",
       requiresMaterials: false,
       defaultValues: { task: "" },
@@ -6201,6 +6543,212 @@ function ProcessManagementScreen({
                     className="w-full rounded-lg border-gray-300 border p-2.5 focus:ring-emerald-500 focus:border-emerald-500"
                   />
                 </div>
+
+                {view === "add" && (
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Biểu tượng <span className="text-red-500">*</span>
+                      </label>
+                      <div className="flex gap-3">
+                        <select
+                          required
+                          value={currentTask.iconName || ""}
+                          onChange={(e) => {
+                            const selectedIconName = e.target.value;
+                            setCurrentTask({
+                              ...currentTask,
+                              iconName: selectedIconName,
+                            });
+                          }}
+                          className="flex-1 rounded-lg border-gray-300 border p-2.5 focus:ring-emerald-500 focus:border-emerald-500"
+                          disabled={iconsLoading}
+                        >
+                          <option value="">
+                            {iconsLoading
+                              ? "Đang tải..."
+                              : "-- Chọn biểu tượng --"}
+                          </option>
+                          {taskIcons.map((icon) => (
+                            <option key={icon.id} value={icon.icon_name}>
+                              {icon.name}
+                            </option>
+                          ))}
+                        </select>
+                        {currentTask.iconName && (
+                          <div className="flex items-center gap-2 px-4 py-2 bg-gray-50 rounded-lg border border-gray-200">
+                            <div className="w-6 h-6 flex items-center justify-center">
+                              {(() => {
+                                const resolvedIcon = resolveTaskIcon(
+                                  currentTask.iconName,
+                                );
+                                if (typeof resolvedIcon === "function") {
+                                  const IconComponent = resolvedIcon;
+                                  return <IconComponent size={20} />;
+                                }
+                                return null;
+                              })()}
+                            </div>
+                            <span className="text-sm font-medium text-gray-700">
+                              {
+                                taskIcons.find(
+                                  (icon) =>
+                                    icon.icon_name === currentTask.iconName,
+                                )?.name
+                              }
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {currentTask.iconName && (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-3">
+                          Chọn màu <span className="text-red-500">*</span>
+                        </label>
+                        <div className="grid grid-cols-8 gap-2">
+                          {(() => {
+                            // Comprehensive color palette with all variants
+                            const allColors = [
+                              "bg-blue-100 text-blue-600",
+                              "bg-blue-50 text-blue-700",
+                              "bg-blue-200 text-blue-700",
+                              "bg-green-100 text-green-600",
+                              "bg-green-50 text-green-700",
+                              "bg-green-200 text-green-700",
+                              "bg-red-100 text-red-600",
+                              "bg-red-50 text-red-700",
+                              "bg-red-200 text-red-700",
+                              "bg-yellow-100 text-yellow-600",
+                              "bg-yellow-50 text-yellow-700",
+                              "bg-yellow-200 text-yellow-700",
+                              "bg-orange-100 text-orange-600",
+                              "bg-orange-50 text-orange-700",
+                              "bg-orange-200 text-orange-700",
+                              "bg-purple-100 text-purple-600",
+                              "bg-purple-50 text-purple-700",
+                              "bg-purple-200 text-purple-700",
+                              "bg-pink-100 text-pink-600",
+                              "bg-pink-50 text-pink-700",
+                              "bg-pink-200 text-pink-700",
+                              "bg-indigo-100 text-indigo-600",
+                              "bg-indigo-50 text-indigo-700",
+                              "bg-indigo-200 text-indigo-700",
+                              "bg-cyan-100 text-cyan-600",
+                              "bg-cyan-50 text-cyan-700",
+                              "bg-cyan-200 text-cyan-700",
+                              "bg-teal-100 text-teal-600",
+                              "bg-teal-50 text-teal-700",
+                              "bg-teal-200 text-teal-700",
+                              "bg-emerald-100 text-emerald-600",
+                              "bg-emerald-50 text-emerald-700",
+                              "bg-emerald-200 text-emerald-700",
+                              "bg-lime-100 text-lime-600",
+                              "bg-lime-50 text-lime-700",
+                              "bg-lime-200 text-lime-700",
+                              "bg-gray-100 text-gray-600",
+                              "bg-gray-50 text-gray-700",
+                              "bg-gray-200 text-gray-700",
+                              "bg-stone-100 text-stone-600",
+                              "bg-stone-50 text-stone-700",
+                              "bg-stone-200 text-stone-700",
+                            ];
+
+                            const colorMap: Record<string, string> = {
+                              "bg-blue-100": "Xanh dương nhạt",
+                              "bg-blue-50": "Xanh dương siêu nhạt",
+                              "bg-blue-200": "Xanh dương đậm",
+                              "bg-green-100": "Xanh lá nhạt",
+                              "bg-green-50": "Xanh lá siêu nhạt",
+                              "bg-green-200": "Xanh lá đậm",
+                              "bg-red-100": "Đỏ nhạt",
+                              "bg-red-50": "Đỏ siêu nhạt",
+                              "bg-red-200": "Đỏ đậm",
+                              "bg-yellow-100": "Vàng nhạt",
+                              "bg-yellow-50": "Vàng siêu nhạt",
+                              "bg-yellow-200": "Vàng đậm",
+                              "bg-orange-100": "Cam nhạt",
+                              "bg-orange-50": "Cam siêu nhạt",
+                              "bg-orange-200": "Cam đậm",
+                              "bg-purple-100": "Tím nhạt",
+                              "bg-purple-50": "Tím siêu nhạt",
+                              "bg-purple-200": "Tím đậm",
+                              "bg-pink-100": "Hồng nhạt",
+                              "bg-pink-50": "Hồng siêu nhạt",
+                              "bg-pink-200": "Hồng đậm",
+                              "bg-indigo-100": "Chàm nhạt",
+                              "bg-indigo-50": "Chàm siêu nhạt",
+                              "bg-indigo-200": "Chàm đậm",
+                              "bg-cyan-100": "Xanh lục nhạt",
+                              "bg-cyan-50": "Xanh lục siêu nhạt",
+                              "bg-cyan-200": "Xanh lục đậm",
+                              "bg-teal-100": "Xanh ngọc nhạt",
+                              "bg-teal-50": "Xanh ngọc siêu nhạt",
+                              "bg-teal-200": "Xanh ngọc đậm",
+                              "bg-emerald-100": "Ngọc bích nhạt",
+                              "bg-emerald-50": "Ngọc bích siêu nhạt",
+                              "bg-emerald-200": "Ngọc bích đậm",
+                              "bg-lime-100": "Xanh non nhạt",
+                              "bg-lime-50": "Xanh non siêu nhạt",
+                              "bg-lime-200": "Xanh non đậm",
+                              "bg-gray-100": "Xám nhạt",
+                              "bg-gray-50": "Xám siêu nhạt",
+                              "bg-gray-200": "Xám đậm",
+                              "bg-stone-100": "Đá nhạt",
+                              "bg-stone-50": "Đá siêu nhạt",
+                              "bg-stone-200": "Đá đậm",
+                            };
+
+                            return allColors.map((colorClass) => {
+                              const bgClass = colorClass.split(" ")[0];
+                              const colorName =
+                                colorMap[bgClass] || "Không xác định";
+
+                              return (
+                                <button
+                                  key={colorClass}
+                                  type="button"
+                                  onClick={() =>
+                                    setCurrentTask({
+                                      ...currentTask,
+                                      color: colorClass,
+                                    })
+                                  }
+                                  className={`p-2.5 rounded-lg border-2 transition-all flex items-center justify-center ${
+                                    currentTask.color === colorClass
+                                      ? "border-emerald-600 ring-2 ring-emerald-500"
+                                      : "border-gray-200 hover:border-gray-300"
+                                  }`}
+                                  title={colorName}
+                                >
+                                  <div
+                                    className={`p-1.5 rounded-md ${colorClass}`}
+                                  >
+                                    {(() => {
+                                      const resolvedIcon = resolveTaskIcon(
+                                        currentTask.iconName,
+                                      );
+                                      if (typeof resolvedIcon === "function") {
+                                        const IconComponent = resolvedIcon;
+                                        return <IconComponent size={16} />;
+                                      }
+                                      return null;
+                                    })()}
+                                  </div>
+                                </button>
+                              );
+                            });
+                          })()}
+                        </div>
+                        <p className="text-xs text-gray-500 mt-2">
+                          Tổng cộng 42 màu để chọn. Chọn một màu để thay đổi
+                          giao diện của biểu tượng
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 <div className="flex items-center gap-3 p-4 bg-emerald-50 rounded-lg border border-emerald-100">
                   <input
@@ -6676,12 +7224,9 @@ function FarmInformationScreen({
                     className="w-full rounded-lg border-gray-300 border p-2.5 focus:ring-emerald-500 focus:border-emerald-500 bg-white"
                   >
                     <option value="">-- Chọn cây trồng --</option>
-                    <option value="Rau">Rau</option>
-                    <option value="Lúa">Lúa</option>
+                    <option value="Sầu riêng">Sầu riêng</option>
                     <option value="Cà phê">Cà phê</option>
-                    <option value="Ngô">Ngô</option>
-                    <option value="Sắn">Sắn</option>
-                    <option value="Khác">Khác</option>
+                    <option value="Hồ tiêu">Hồ tiêu</option>
                   </select>
                 </div>
               </div>

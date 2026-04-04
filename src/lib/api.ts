@@ -2261,6 +2261,15 @@ export const farmAPI = {
     return unwrapListResponse<any>(response);
   },
 
+  getTaskIcons: async (): Promise<any[]> => {
+    const endpoint = API_ENDPOINTS.TASK_ICONS;
+    const response = await apiCall<any>(endpoint, {
+      requireAuth: false,
+      method: "GET",
+    });
+    return unwrapListResponse<any>(response);
+  },
+
   getTaskCategories: async (
     farmerId?: string | number,
     adminId?: string | number,

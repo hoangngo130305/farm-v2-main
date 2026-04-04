@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from .models import (
-    Admin, SysAdmin, VietGAPRegistration, Farmer, Farm, Stage, Lot, PlantingZone, Task, TaskCategory,
+    Admin, SysAdmin, VietGAPRegistration, Farmer, Farm, Stage, Lot, PlantingZone, Task, TaskCategory, TaskIcon,
     Material, FarmLog, IncidentReport
 )
 
@@ -156,6 +156,38 @@ class FarmerCreateSerializer(serializers.ModelSerializer):
             'admin': {'required': True},
         }
 
+    def validate_phone(self, value):
+        """Validate phone uniqueness - exclude current instance if updating"""
+        if not value:
+            return value
+        
+        queryset = Farmer.objects.filter(phone=value)
+        
+        # If updating, exclude the current instance being modified
+        if self.instance is not None:
+            queryset = queryset.exclude(pk=self.instance.pk)
+        
+        if queryset.exists():
+            raise serializers.ValidationError("Số điện thoại này đã được đăng ký.")
+        
+        return value
+
+    def validate_cccd(self, value):
+        """Validate CCCD uniqueness - exclude current instance if updating"""
+        if not value:
+            return value
+        
+        queryset = Farmer.objects.filter(cccd=value)
+        
+        # If updating, exclude the current instance being modified
+        if self.instance is not None:
+            queryset = queryset.exclude(pk=self.instance.pk)
+        
+        if queryset.exists():
+            raise serializers.ValidationError("Số CCCD này đã được đăng ký.")
+        
+        return value
+
 
 class FarmSerializer(serializers.ModelSerializer):
     admin_name = serializers.CharField(source='admin.name', read_only=True)
@@ -185,6 +217,13 @@ class PlantingZoneSerializer(serializers.ModelSerializer):
         model = PlantingZone
         fields = ['id', 'crop_type', 'name', 'lots', 'certificate_files', 'admin', 'created_at', 'updated_at']
         read_only_fields = ['id', 'created_at', 'updated_at']
+
+
+class TaskIconSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = TaskIcon
+        fields = ['id', 'name', 'icon_name', 'color_variants', 'description', 'created_at']
+        read_only_fields = ['id', 'created_at']
 
 
 class TaskSerializer(serializers.ModelSerializer):

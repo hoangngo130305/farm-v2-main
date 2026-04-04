@@ -2,7 +2,7 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .views import (
     AdminViewSet, SysAdminViewSet, FarmerViewSet, FarmViewSet, StageViewSet, LotViewSet,
-    PlantingZoneViewSet, TaskViewSet, TaskCategoryViewSet,
+    PlantingZoneViewSet, TaskViewSet, TaskCategoryViewSet, TaskIconViewSet,
     MaterialViewSet, VietGAPRegistrationViewSet, FarmLogViewSet, IncidentReportViewSet
 )
 
@@ -14,6 +14,7 @@ router.register(r'farms', FarmViewSet, basename='farm')
 router.register(r'stages', StageViewSet, basename='stage')
 router.register(r'lots', LotViewSet, basename='lot')
 router.register(r'planting-zones', PlantingZoneViewSet, basename='planting-zone')
+router.register(r'task-icons', TaskIconViewSet, basename='task-icon')
 router.register(r'tasks', TaskViewSet, basename='task')
 router.register(r'task-categories', TaskCategoryViewSet, basename='task-category')
 router.register(r'materials', MaterialViewSet, basename='material')

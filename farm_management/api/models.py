@@ -198,6 +198,22 @@ class PlantingZone(models.Model):
         return f"{self.name} - {self.crop_type}"
 
 
+class TaskIcon(models.Model):
+    """Available icons for tasks - predefined list of icon names from lucide-react"""
+    name = models.CharField(max_length=50, unique=True)  # Icon display name (e.g., "Tưới nước")
+    icon_name = models.CharField(max_length=50, unique=True)  # Icon identifier (e.g., "CloudRain")
+    color_variants = models.JSONField(default=list, blank=True)  # e.g., ["bg-cyan-100 text-cyan-600", "bg-blue-100 text-blue-600"]
+    description = models.TextField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'task_icons'
+        ordering = ['name']
+
+    def __str__(self):
+        return f"{self.name} ({self.icon_name})"
+
+
 class Task(models.Model):
     """Farm tasks/activities - each task must be assigned to an admin (HTX)"""
     admin = models.ForeignKey(

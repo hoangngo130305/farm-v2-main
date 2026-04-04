@@ -69,6 +69,7 @@ type VietgapReq = {
 
 const MapContainerAny = MapContainer as unknown as React.ComponentType<any>;
 const TileLayerAny = TileLayer as unknown as React.ComponentType<any>;
+const PolygonAny = Polygon as unknown as React.ComponentType<any>;
 
 // Helper component to control map from outside
 function MapController({
@@ -958,7 +959,7 @@ export function SysAdminMapsScreen({ htxs }: any) {
             {filteredZones.map((zone: any, index: number) => {
               if (!zone.polygon || zone.polygon.length === 0) return null;
               return (
-                <Polygon
+                <PolygonAny
                   key={index}
                   positions={zone.polygon}
                   pathOptions={{
@@ -991,7 +992,7 @@ export function SysAdminMapsScreen({ htxs }: any) {
                       </div>
                     </div>
                   </Popup>
-                </Polygon>
+                </PolygonAny>
               );
             })}
           </MapContainerAny>
@@ -1500,14 +1501,6 @@ export function SysAdminHTXDetailScreen({
                     </div>
                     <div className="text-sm text-blue-600">Diện tích</div>
                   </div>
-                  <div className="bg-amber-50 p-4 rounded-xl border border-amber-100 text-center col-span-2">
-                    <div className="text-2xl font-bold text-amber-700">
-                      {htx.activeLogs}
-                    </div>
-                    <div className="text-sm text-amber-600">
-                      Nhật ký (7 ngày qua)
-                    </div>
-                  </div>
                 </div>
               </div>
             )}
@@ -1638,23 +1631,116 @@ export function SysAdminHTXDetailScreen({
                       </div>
                       <div className="p-4">
                         <div className="mb-4">
-                          <p className="text-sm font-medium text-gray-700 mb-2">
+                          <p className="text-sm font-medium text-gray-700 mb-3">
                             Các lô quản lý:
                           </p>
                           {zone.lots && zone.lots.length > 0 ? (
-                            <div className="grid grid-cols-1 gap-2">
-                              {zone.lots.map((lot: any, idx: number) => (
-                                <div
-                                  key={idx}
-                                  className="p-2 bg-gray-50 rounded-lg border border-gray-100"
-                                >
-                                  <p className="text-sm text-gray-700">
-                                    {typeof lot === "string"
-                                      ? lot
-                                      : lot.name || `Lô ${idx + 1}`}
-                                  </p>
-                                </div>
-                              ))}
+                            <div className="space-y-3">
+                              {zone.lots.map((lot: any, idx: number) => {
+                                const lotName =
+                                  typeof lot === "string"
+                                    ? lot
+                                    : lot.name || `Lô ${idx + 1}`;
+                                const lotCoordinates =
+                                  lot.latLngs ||
+                                  (lot.coordinates
+                                    ? lot.coordinates
+                                        .split(" ")
+                                        .map((coord: string) => {
+                                          const [lat, lng] = coord
+                                            .split(",")
+                                            .map((n: string) =>
+                                              parseFloat(n.trim()),
+                                            );
+                                          return [lat, lng] as [number, number];
+                                        })
+                                        .filter(
+                                          ([lat, lng]: [number, number]) =>
+                                            !isNaN(lat) && !isNaN(lng),
+                                        )
+                                    : null);
+
+                                const hasValidCoordinates =
+                                  lotCoordinates &&
+                                  lotCoordinates.length > 0 &&
+                                  lotCoordinates.every(
+                                    ([lat, lng]: [number, number]) =>
+                                      lat >= -90 &&
+                                      lat <= 90 &&
+                                      lng >= -180 &&
+                                      lng <= 180,
+                                  );
+
+                                return (
+                                  <div
+                                    key={idx}
+                                    className="border border-gray-200 rounded-lg overflow-hidden bg-gray-50"
+                                  >
+                                    <div className="p-2 bg-white border-b border-gray-200 flex justify-between items-center">
+                                      <p className="text-sm font-medium text-gray-800">
+                                        {lotName}
+                                      </p>
+                                      {typeof lot !== "string" && lot.area && (
+                                        <p className="text-xs text-gray-500">
+                                          Diện tích: {lot.area} ha
+                                        </p>
+                                      )}
+                                    </div>
+                                    {hasValidCoordinates ? (
+                                      <div
+                                        style={{
+                                          height: "200px",
+                                          width: "100%",
+                                        }}
+                                        className="relative"
+                                      >
+                                        <MapContainerAny
+                                          center={lotCoordinates[0]}
+                                          zoom={16}
+                                          style={{
+                                            height: "100%",
+                                            width: "100%",
+                                            zIndex: 1,
+                                          }}
+                                        >
+                                          <TileLayerAny
+                                            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                                            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                                            maxZoom={22}
+                                            maxNativeZoom={19}
+                                          />
+                                          <PolygonAny
+                                            positions={lotCoordinates}
+                                            color="#10b981"
+                                            fillColor="#10b981"
+                                            fillOpacity={0.2}
+                                            weight={2}
+                                          >
+                                            <Popup>
+                                              <div className="text-sm font-bold text-emerald-800">
+                                                {lotName}
+                                              </div>
+                                              {typeof lot !== "string" &&
+                                                lot.area && (
+                                                  <div className="text-xs text-gray-600">
+                                                    Diện tích: {lot.area} ha
+                                                  </div>
+                                                )}
+                                            </Popup>
+                                          </PolygonAny>
+                                        </MapContainerAny>
+                                      </div>
+                                    ) : (
+                                      <div className="h-[200px] flex items-center justify-center text-gray-500 text-sm">
+                                        {typeof lot !== "string" &&
+                                        lot.coordinates
+                                          ? "Tọa độ không hợp lệ"
+                                          : "Chưa có tọa độ"}
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })}
                             </div>
                           ) : (
                             <p className="text-sm text-gray-500 italic">

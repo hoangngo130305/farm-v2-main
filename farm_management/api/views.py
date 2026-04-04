@@ -9,13 +9,13 @@ from django.core.files.storage import default_storage
 import json
 from uuid import uuid4
 from .models import (
-    Admin, SysAdmin, VietGAPRegistration, Farmer, Farm, Stage, Lot, PlantingZone, Task, TaskCategory,
+    Admin, SysAdmin, VietGAPRegistration, Farmer, Farm, Stage, Lot, PlantingZone, Task, TaskCategory, TaskIcon,
     Material, FarmLog, IncidentReport
 )
 from .serializers import (
     AdminSerializer, AdminCreateSerializer, SysAdminSerializer, SysAdminCreateSerializer,
     FarmerSerializer, FarmerCreateSerializer, FarmSerializer, StageSerializer, LotSerializer,
-    PlantingZoneSerializer, TaskSerializer, TaskCategorySerializer,
+    PlantingZoneSerializer, TaskSerializer, TaskCategorySerializer, TaskIconSerializer,
     MaterialSerializer, FarmLogListSerializer, FarmLogCreateUpdateSerializer,
     IncidentReportListSerializer, IncidentReportCreateUpdateSerializer,
     VietGAPRegistrationListSerializer, VietGAPRegistrationCreateUpdateSerializer,
@@ -250,6 +250,15 @@ class PlantingZoneViewSet(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
         self.perform_update(serializer)
         return Response(serializer.data)
+
+
+class TaskIconViewSet(viewsets.ReadOnlyModelViewSet):
+    """ViewSet for Task Icons - read-only list of available icons"""
+    queryset = TaskIcon.objects.all()
+    serializer_class = TaskIconSerializer
+    permission_classes = [AllowAny]
+    filter_backends = [filters.SearchFilter]
+    search_fields = ['name', 'icon_name']
 
 
 class TaskViewSet(viewsets.ModelViewSet):
