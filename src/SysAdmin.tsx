@@ -833,14 +833,55 @@ export function SysAdminMapsScreen({ htxs }: any) {
   const [searchQuery, setSearchQuery] = useState("");
   const [mapCenter, setMapCenter] = useState<[number, number] | null>(null);
   const [mapZoom, setMapZoom] = useState(10);
+  const [allZones, setAllZones] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [adminsMap, setAdminsMap] = useState<Record<string, string>>({});
 
-  const allZones = htxs.flatMap((htx: any) =>
-    (htx.zones || []).map((zone: any) => ({
-      ...zone,
-      htxName: htx.name,
-      htxId: htx.id,
-    })),
-  );
+  useEffect(() => {
+    const loadZonesAndAdmins = async () => {
+      try {
+        setLoading(true);
+        
+        // Load all zones from API
+        const zones = await farmAPI.getPlantingZones();
+        
+        // Load all admins to map admin ID to name
+        const admins = await adminAPI.getAdmins();
+        const adminMap: Record<string, string> = {};
+        admins.forEach((admin: any) => {
+          adminMap[String(admin.id)] = admin.name || admin.google_email || "HTX";
+        });
+        setAdminsMap(adminMap);
+        
+        // Enrich zones with admin info
+        const enrichedZones = (zones || []).map((zone: any) => ({
+          ...zone,
+          htxName: adminMap[String(zone.admin)] || "HTX không xác định",
+          htxId: zone.admin,
+          // Convert lots to polygon format for Leaflet
+          polygon: zone.lots && zone.lots.length > 0
+            ? zone.lots.flatMap((lot: any) => 
+                (lot.latLngs && lot.latLngs.length > 0) 
+                  ? lot.latLngs 
+                  : []
+              )
+            : [],
+          area: zone.lots && zone.lots.length > 0
+            ? `${(zone.lots.reduce((sum: number, lot: any) => sum + (lot.area || 0), 0)).toFixed(1)} ha`
+            : "0 ha",
+        }));
+        
+        setAllZones(enrichedZones);
+      } catch (error) {
+        console.warn("Lỗi khi tải vùng trồng:", error);
+        setAllZones([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    loadZonesAndAdmins();
+  }, []);
 
   const filteredZones = allZones.filter(
     (zone: any) =>
@@ -898,43 +939,54 @@ export function SysAdminMapsScreen({ htxs }: any) {
             </h2>
           </div>
           <div className="flex-1 overflow-y-auto p-4 space-y-4">
-            {filteredZones.map((zone: any, index: number) => (
-              <div
-                key={index}
-                className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden hover:border-emerald-300 transition-colors cursor-pointer"
-                onClick={() => handleZoneClick(zone)}
-              >
-                <div className="p-4">
-                  <h3
-                    className="font-bold text-gray-800 mb-1"
-                    title={zone.name}
-                  >
-                    {zone.name}
-                  </h3>
-                  <div className="flex items-center gap-2 text-gray-500 text-sm mb-3">
-                    <Building size={14} className="shrink-0" />
-                    <span className="truncate" title={zone.htxName}>
-                      {zone.htxName}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-1 rounded-md">
-                      {zone.area}
-                    </span>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        navigate(`/sysadmin/htx/${zone.htxId}`);
-                      }}
-                      className="text-xs text-blue-600 hover:underline font-medium"
+            {loading ? (
+              <div className="text-center py-8">
+                <Loader2 size={32} className="text-emerald-600 animate-spin mx-auto mb-2" />
+                <p className="text-gray-500 text-sm">Đang tải dữ liệu...</p>
+              </div>
+            ) : filteredZones.length > 0 ? (
+              filteredZones.map((zone: any, index: number) => (
+                <div
+                  key={index}
+                  className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden hover:border-emerald-300 transition-colors cursor-pointer"
+                  onClick={() => handleZoneClick(zone)}
+                >
+                  <div className="p-4">
+                    <h3
+                      className="font-bold text-gray-800 mb-1"
+                      title={zone.name}
                     >
-                      Chi tiết HTX
-                    </button>
+                      {zone.name}
+                    </h3>
+                    <div className="flex items-center gap-2 text-gray-500 text-sm mb-3">
+                      <Building size={14} className="shrink-0" />
+                      <span className="truncate" title={zone.htxName}>
+                        {zone.htxName}
+                      </span>
+                    </div>
+                    <div className="mb-2 text-xs text-gray-600">
+                      <span className="bg-blue-50 text-blue-700 px-2 py-1 rounded inline-block mb-1">
+                        {zone.cropType || "Loại cây"}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-1 rounded-md">
+                        {zone.area}
+                      </span>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          navigate(`/sysadmin/htx/${zone.htxId}`);
+                        }}
+                        className="text-xs text-blue-600 hover:underline font-medium"
+                      >
+                        Chi tiết HTX
+                      </button>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
-            {filteredZones.length === 0 && (
+              ))
+            ) : (
               <div className="text-center py-8">
                 <p className="text-gray-500 text-sm">
                   Không tìm thấy vùng trồng nào
@@ -946,56 +998,65 @@ export function SysAdminMapsScreen({ htxs }: any) {
 
         {/* Map Area */}
         <div className="flex-1 relative z-0">
-          <MapContainerAny
-            center={defaultCenter}
-            zoom={10}
-            className="w-full h-full"
-          >
-            <MapController center={mapCenter} zoom={mapZoom} />
-            <TileLayerAny
-              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-            />
-            {filteredZones.map((zone: any, index: number) => {
-              if (!zone.polygon || zone.polygon.length === 0) return null;
-              return (
-                <PolygonAny
-                  key={index}
-                  positions={zone.polygon}
-                  pathOptions={{
-                    color: "#059669",
-                    fillColor: "#10b981",
-                    fillOpacity: 0.4,
-                    weight: 2,
-                  }}
-                >
-                  <Popup>
-                    <div className="p-1 min-w-[200px]">
-                      <h4 className="font-bold text-gray-800 mb-1">
-                        {zone.name}
-                      </h4>
-                      <p className="text-sm text-gray-600 mb-3">
-                        {zone.htxName}
-                      </p>
-                      <div className="flex items-center justify-between pt-2 border-t border-gray-100">
-                        <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-1 rounded-md">
-                          {zone.area}
-                        </span>
+          {loading ? (
+            <div className="w-full h-full flex items-center justify-center bg-gray-100">
+              <div className="text-center">
+                <Loader2 size={48} className="text-emerald-600 animate-spin mx-auto mb-3" />
+                <p className="text-gray-600">Đang tải bản đồ...</p>
+              </div>
+            </div>
+          ) : (
+            <MapContainerAny
+              center={defaultCenter}
+              zoom={10}
+              className="w-full h-full"
+            >
+              <MapController center={mapCenter} zoom={mapZoom} />
+              <TileLayerAny
+                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+              />
+              {filteredZones.map((zone: any, index: number) => {
+                if (!zone.polygon || zone.polygon.length === 0) return null;
+                return (
+                  <PolygonAny
+                    key={index}
+                    positions={zone.polygon}
+                    pathOptions={{
+                      color: "#059669",
+                      fillColor: "#10b981",
+                      fillOpacity: 0.4,
+                      weight: 2,
+                    }}
+                  >
+                    <Popup>
+                      <div className="p-3 min-w-[240px]">
+                        <h4 className="font-bold text-gray-800 mb-1">
+                          {zone.name}
+                        </h4>
+                        <div className="flex items-center gap-2 text-sm text-gray-600 mb-2">
+                          <Building size={14} />
+                          {zone.htxName}
+                        </div>
+                        <div className="text-xs text-gray-600 mb-3 pb-3 border-b border-gray-200">
+                          <div><span className="font-medium">Loại cây:</span> {zone.cropType || "N/A"}</div>
+                          <div><span className="font-medium">Diện tích:</span> {zone.area}</div>
+                        </div>
                         <button
                           onClick={() =>
                             navigate(`/sysadmin/htx/${zone.htxId}`)
                           }
-                          className="text-xs text-blue-600 hover:underline font-medium"
+                          className="w-full text-xs text-blue-600 hover:underline font-medium bg-blue-50 py-2 rounded"
                         >
-                          Xem HTX
+                          Xem chi tiết HTX
                         </button>
                       </div>
-                    </div>
-                  </Popup>
-                </PolygonAny>
-              );
-            })}
-          </MapContainerAny>
+                    </Popup>
+                  </PolygonAny>
+                );
+              })}
+            </MapContainerAny>
+          )}
         </div>
       </main>
     </div>
