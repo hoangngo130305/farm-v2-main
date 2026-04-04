@@ -28,6 +28,7 @@ import {
   Globe,
   Send,
   FilePlus,
+  Loader2,
 } from "lucide-react";
 import { MapContainer, TileLayer, Polygon, Popup, useMap } from "react-leaflet";
 import { authAPI, adminAPI, farmAPI } from "./lib/api";
