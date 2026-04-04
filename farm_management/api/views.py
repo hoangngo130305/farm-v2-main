@@ -135,6 +135,52 @@ class FarmerViewSet(viewsets.ModelViewSet):
             return FarmerCreateSerializer
         return FarmerSerializer
 
+    def create(self, request, *args, **kwargs):
+        """Create a new farmer with logging"""
+        print(f"🆕 [FARMER CREATE] Request data: {request.data}")
+        print(f"📋 [FARMER CREATE] Request method: {request.method}")
+        print(f"📍 [FARMER CREATE] Content-Type: {request.content_type}")
+        
+        try:
+            response = super().create(request, *args, **kwargs)
+            print(f"✅ [FARMER CREATE] Success - created farmer ID: {response.data.get('id')}")
+            return response
+        except Exception as e:
+            print(f"❌ [FARMER CREATE] Error: {e}")
+            print(f"❌ [FARMER CREATE] Error type: {type(e)}")
+            raise
+
+    def update(self, request, *args, **kwargs):
+        """Update farmer with logging"""
+        print(f"📝 [FARMER UPDATE] Request data: {request.data}")
+        print(f"📍 [FARMER UPDATE] Farmer ID: {kwargs.get('pk')}")
+        print(f"📍 [FARMER UPDATE] Full kwargs: {kwargs}")
+        print(f"📍 [FARMER UPDATE] Request path: {request.path}")
+        
+        try:
+            response = super().update(request, *args, **kwargs)
+            print(f"✅ [FARMER UPDATE] Success")
+            return response
+        except Exception as e:
+            print(f"❌ [FARMER UPDATE] Error: {e}")
+            raise
+
+    def partial_update(self, request, *args, **kwargs):
+        """Partial update (PATCH) farmer with logging"""
+        print(f"📝 [FARMER PARTIAL UPDATE] Request data: {request.data}")
+        print(f"📍 [FARMER PARTIAL UPDATE] Farmer ID from kwargs: {kwargs.get('pk')}")
+        print(f"📍 [FARMER PARTIAL UPDATE] Full kwargs: {kwargs}")
+        print(f"📍 [FARMER PARTIAL UPDATE] Request path: {request.path}")
+        
+        try:
+            response = super().partial_update(request, *args, **kwargs)
+            print(f"✅ [FARMER PARTIAL UPDATE] Success")
+            return response
+        except Exception as e:
+            print(f"❌ [FARMER PARTIAL UPDATE] Error: {e}")
+            print(f"❌ [FARMER PARTIAL UPDATE] Error type: {type(e).__name__}")
+            raise
+
     @action(detail=False, methods=['post'], permission_classes=[AllowAny])
     def login(self, request):
         """Farmer login with phone/pin or google_id"""

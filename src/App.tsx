@@ -68,8 +68,11 @@ import {
   Marker,
   Popup,
   useMapEvents,
+  LayersControl,
 } from "react-leaflet";
 import { QRCodeSVG as QRCode } from "qrcode.react";
+import { Breadcrumb } from "./components/Breadcrumb";
+import { SysAdminLoginScreen, SysAdminApp } from "./SysAdmin";
 
 declare global {
   interface Window {
@@ -123,6 +126,224 @@ const decodeJwt = (token: string): any => {
     return null;
   }
 };
+
+// Default task configurations for new HTX
+const DEFAULT_TASK_CONFIGS = [
+  {
+    id: "rua_vuon",
+    name: "Rửa vườn",
+    iconName: "Droplets",
+    color: "bg-blue-100 text-blue-600",
+    requires_materials: true,
+    default_values: {
+      task: "Rửa vườn",
+      pest: "Rêu",
+      method: "Champion",
+      activeIngredient: "Copper Hydroxide",
+      dosage: "2kg / 1000 lít nước",
+      quarantineTime: "7 Ngày",
+    },
+  },
+  {
+    id: "cat_tia",
+    name: "Cắt tỉa cành",
+    iconName: "Scissors",
+    color: "bg-gray-100 text-gray-600",
+    requires_materials: false,
+    default_values: { task: "Cắt tỉa cành" },
+  },
+  {
+    id: "lam_co",
+    name: "Làm sạch cỏ",
+    iconName: "Leaf",
+    color: "bg-green-100 text-green-600",
+    requires_materials: false,
+    default_values: { task: "Làm sạch cỏ" },
+  },
+  {
+    id: "tuoi_nuoc",
+    name: "Tưới nước",
+    iconName: "CloudRain",
+    color: "bg-cyan-100 text-cyan-600",
+    requires_materials: false,
+    default_values: { task: "Tưới nước", dosage: "50lit/m2" },
+  },
+  {
+    id: "bon_phan_vi_sinh",
+    name: "Bón phân vi sinh",
+    iconName: "Sprout",
+    color: "bg-lime-100 text-lime-600",
+    requires_materials: true,
+    default_values: {
+      task: "Bón phân vi sinh",
+      fertilizer: "Phân gà Nhật Bản",
+    },
+  },
+  {
+    id: "bon_phan_lan",
+    name: "Bón phân Lân",
+    iconName: "FlaskConical",
+    color: "bg-orange-100 text-orange-600",
+    requires_materials: true,
+    default_values: {
+      task: "Bón phân",
+      fertilizer: "Phân Lân Văn Điển",
+      dosage: "2kg / 1 cây",
+    },
+  },
+  {
+    id: "bon_phan_npk",
+    name: "Bón phân NPK",
+    iconName: "FlaskConical",
+    color: "bg-amber-100 text-amber-600",
+    requires_materials: true,
+    default_values: {
+      task: "Bón phân",
+      fertilizer: "NPK 30-10-10",
+      dosage: "1kg / cây",
+    },
+  },
+  {
+    id: "phun_sau_ray_najat",
+    name: "Sâu Rầy (Najat)",
+    iconName: "BugOff",
+    color: "bg-red-100 text-red-600",
+    requires_materials: true,
+    default_values: {
+      task: "Phun thuốc Sâu Rầy",
+      pest: "Sâu rầy",
+      method: "Najat 3.6",
+      activeIngredient: "Abamectin",
+      dosage: "800ml/800L",
+      quarantineTime: "7 Ngày",
+    },
+  },
+  {
+    id: "phun_ray_xanh",
+    name: "Rầy xanh",
+    iconName: "BugOff",
+    color: "bg-red-100 text-red-600",
+    requires_materials: true,
+    default_values: {
+      task: "Phun thuốc Sâu Rầy",
+      pest: "Rầy xanh",
+      method: "Bình Dân",
+      activeIngredient: "Abamectin",
+      dosage: "800g/800L",
+      quarantineTime: "7 Ngày",
+    },
+  },
+  {
+    id: "phun_rep",
+    name: "Phun Rệp",
+    iconName: "BugOff",
+    color: "bg-rose-100 text-rose-600",
+    requires_materials: true,
+    default_values: {
+      task: "Phun thuốc Sâu Rầy",
+      pest: "Rệp",
+      method: "Tado 4.0",
+      activeIngredient: "Picoxystrobin",
+      dosage: "500ml / 600L",
+    },
+  },
+  {
+    id: "phun_nhen_do",
+    name: "Phun Nhện đỏ",
+    iconName: "SprayCan",
+    color: "bg-purple-100 text-purple-600",
+    requires_materials: true,
+    default_values: {
+      task: "Phun thuốc",
+      pest: "Nhện đỏ",
+      method: "Dipimai 150 EC",
+      activeIngredient: "Pyridaben",
+      dosage: "2000ml / 800L nước",
+      quarantineTime: "7 Ngày",
+    },
+  },
+  {
+    id: "do_goc",
+    name: "Đổ gốc",
+    iconName: "TreePine",
+    color: "bg-emerald-100 text-emerald-600",
+    requires_materials: true,
+    default_values: {
+      task: "Đổ gốc",
+      method: "Humic",
+      activeIngredient: "Axit Humic",
+    },
+  },
+  {
+    id: "xu_ly_chat_thai",
+    name: "Xử lý chất thải",
+    iconName: "Trash2",
+    color: "bg-stone-100 text-stone-600",
+    requires_materials: false,
+    default_values: {
+      task: "Xử lý chất thải",
+      wasteType: "Thu gom chất thải độc hại",
+    },
+  },
+  {
+    id: "quan_ly_vat_tu",
+    name: "Quản lý vật tư",
+    iconName: "Package",
+    color: "bg-indigo-100 text-indigo-600",
+    requires_materials: false,
+    default_values: { task: "Quản lý vật tư" },
+  },
+  {
+    id: "ve_sinh_kho",
+    name: "Vệ sinh kho",
+    iconName: "Warehouse",
+    color: "bg-teal-100 text-teal-600",
+    requires_materials: false,
+    default_values: { task: "An toàn vệ sinh kho" },
+  },
+  {
+    id: "an_toan_lao_dong",
+    name: "An toàn lao động",
+    iconName: "HardHat",
+    color: "bg-yellow-100 text-yellow-600",
+    requires_materials: false,
+    default_values: { task: "An toàn lao động" },
+  },
+];
+
+// Default task categories for new HTX
+const DEFAULT_TASK_CATEGORIES = [
+  {
+    id: "cham_soc",
+    name: "Chăm sóc cơ bản",
+    task_ids: ["tuoi_nuoc", "lam_co", "cat_tia", "rua_vuon"],
+  },
+  {
+    id: "dinh_duong",
+    name: "Phân bón & Dinh dưỡng",
+    task_ids: ["bon_phan_vi_sinh", "bon_phan_lan", "bon_phan_npk", "do_goc"],
+  },
+  {
+    id: "phong_tru",
+    name: "Phòng trừ sâu bệnh",
+    task_ids: [
+      "phun_sau_ray_najat",
+      "phun_ray_xanh",
+      "phun_rep",
+      "phun_nhen_do",
+    ],
+  },
+  {
+    id: "quan_ly",
+    name: "Quản lý & Vệ sinh bảo hộ",
+    task_ids: [
+      "xu_ly_chat_thai",
+      "quan_ly_vat_tu",
+      "ve_sinh_kho",
+      "an_toan_lao_dong",
+    ],
+  },
+];
 
 const ensureGoogleIdentityInitialized = (
   context: "signin" | "signup" = "signin",
@@ -400,9 +621,6 @@ interface TaskConfig {
   };
 }
 
-import { Breadcrumb } from "./components/Breadcrumb";
-import { SysAdminLoginScreen, SysAdminApp } from "./SysAdmin";
-
 const TASK_ICON_MAP: Record<string, any> = {
   Droplets,
   Scissors,
@@ -419,6 +637,15 @@ const TASK_ICON_MAP: Record<string, any> = {
   HardHat,
 };
 
+const getDefaultTaskTemplateByName = (taskName?: string) => {
+  const normalizedName = String(taskName || "")
+    .trim()
+    .toLowerCase();
+  return DEFAULT_TASK_CONFIGS.find(
+    (taskConfig) => taskConfig.name.trim().toLowerCase() === normalizedName,
+  );
+};
+
 function resolveTaskIcon(iconName?: string, icon?: any) {
   if (typeof icon === "function") return icon;
   if (iconName && TASK_ICON_MAP[iconName]) return TASK_ICON_MAP[iconName];
@@ -428,6 +655,9 @@ function resolveTaskIcon(iconName?: string, icon?: any) {
 }
 
 function normalizeTaskConfig(task: any): TaskConfig {
+  const defaultTaskTemplate = getDefaultTaskTemplateByName(
+    task.name || task.title || task.label,
+  );
   const iconName =
     task.iconName ||
     (typeof task.icon === "function"
@@ -435,6 +665,7 @@ function normalizeTaskConfig(task: any): TaskConfig {
       : typeof task.icon === "string"
         ? task.icon
         : undefined) ||
+    defaultTaskTemplate?.iconName ||
     task.icon ||
     "Leaf";
   const defaultValues = {
@@ -463,8 +694,121 @@ function normalizeTaskConfig(task: any): TaskConfig {
 
 // ============================================================
 // HELPER FUNCTIONS - currentUser persistence
-// ============================================================
 
+// Ensure every HTX has the default process configuration without overwriting custom data.
+async function createDefaultTasksForAdmin(adminId: string | number) {
+  try {
+    const existingTasks = await farmAPI.getTasks(String(adminId));
+    const existingCategories = await farmAPI.getTaskCategories(
+      undefined,
+      String(adminId),
+    );
+
+    const taskIdMap: Record<string, string> = {};
+    DEFAULT_TASK_CONFIGS.forEach((taskConfig) => {
+      const matchedTask = (existingTasks || []).find(
+        (task: any) => String(task.name || "").trim() === taskConfig.name,
+      );
+      if (matchedTask) {
+        taskIdMap[taskConfig.id] = String(matchedTask.id);
+      }
+    });
+
+    for (const taskConfig of DEFAULT_TASK_CONFIGS) {
+      if (taskIdMap[taskConfig.id]) {
+        const matchedTask = (existingTasks || []).find(
+          (task: any) => String(task.name || "").trim() === taskConfig.name,
+        );
+
+        const storedIcon = String(
+          matchedTask?.iconName || matchedTask?.icon || "",
+        ).trim();
+        const shouldRepairIcon =
+          !storedIcon || storedIcon === "Leaf" || !TASK_ICON_MAP[storedIcon];
+
+        if (matchedTask?.id && shouldRepairIcon) {
+          try {
+            await farmAPI.updateTask(matchedTask.id, {
+              icon: taskConfig.iconName,
+            });
+          } catch (error) {
+            console.warn(
+              `⚠️ Lỗi khi cập nhật icon task ${taskConfig.name}:`,
+              error,
+            );
+          }
+        }
+        continue;
+      }
+
+      try {
+        const createdTask = await farmAPI.createTask({
+          name: taskConfig.name,
+          icon: taskConfig.iconName,
+          color: taskConfig.color,
+          requires_materials: taskConfig.requires_materials,
+          default_values: taskConfig.default_values,
+          admin: adminId,
+        });
+        taskIdMap[taskConfig.id] = String(createdTask.id || taskConfig.id);
+      } catch (error) {
+        console.warn(`⚠️ Lỗi khi tạo task ${taskConfig.name}:`, error);
+      }
+    }
+
+    for (const category of DEFAULT_TASK_CATEGORIES) {
+      try {
+        const mappedTaskIds = category.task_ids
+          .map((id) => taskIdMap[id])
+          .filter(Boolean);
+
+        const existingCategory = (existingCategories || []).find(
+          (item: any) =>
+            String(item.name || item.title || "").trim() === category.name,
+        );
+
+        if (!existingCategory) {
+          await farmAPI.createTaskCategory({
+            name: category.name,
+            task_ids: mappedTaskIds,
+            admin: adminId,
+          });
+          continue;
+        }
+
+        const existingTaskIds = Array.isArray(existingCategory.task_ids)
+          ? existingCategory.task_ids.map(String)
+          : Array.isArray(existingCategory.taskIds)
+            ? existingCategory.taskIds.map(String)
+            : [];
+
+        const mergedTaskIds = Array.from(
+          new Set([...existingTaskIds, ...mappedTaskIds]),
+        );
+
+        const needsUpdate =
+          existingTaskIds.length !== mergedTaskIds.length ||
+          mergedTaskIds.some(
+            (taskId, index) => taskId !== existingTaskIds[index],
+          );
+
+        if (needsUpdate) {
+          await farmAPI.updateTaskCategory(existingCategory.id, {
+            task_ids: mergedTaskIds,
+          });
+        }
+      } catch (error) {
+        console.warn(`⚠️ Lỗi khi tạo danh mục ${category.name}:`, error);
+      }
+    }
+
+    console.log("✅ Đã đồng bộ cấu hình quy trình mặc định cho HTX:", adminId);
+  } catch (error) {
+    console.warn("⚠️ Lỗi khi tạo cấu hình quy trình mặc định:", error);
+  }
+}
+
+// ============================================================
 const CURRENT_USER_STORAGE_KEY = "currentUser_farm_management";
 const CURRENT_USER_ROLE_KEY = "currentUserRole_farm_management";
 
@@ -488,18 +832,20 @@ const loadCurrentUserFromStorage = (): any => {
   try {
     const stored = localStorage.getItem(CURRENT_USER_STORAGE_KEY);
     const storedRole = localStorage.getItem(CURRENT_USER_ROLE_KEY);
-    
+
     if (stored) {
       const user = JSON.parse(stored);
-      
+
       // Validate that stored user matches stored role
       if (user.role !== storedRole) {
-        console.warn("❌ [AUTH] User role mismatch - clearing corrupted user data");
+        console.warn(
+          "❌ [AUTH] User role mismatch - clearing corrupted user data",
+        );
         localStorage.removeItem(CURRENT_USER_STORAGE_KEY);
         localStorage.removeItem(CURRENT_USER_ROLE_KEY);
         return null;
       }
-      
+
       console.log("✅ [AUTH] Restored currentUser from localStorage:", user);
       return user;
     }
@@ -617,42 +963,42 @@ export default function App() {
   // ============================================================
   useEffect(() => {
     const currentPath = location.pathname;
-    
+
     // If accessing /app (farmer route) but user is admin -> redirect to /admin
     if (currentPath === "/app" && currentUser?.role === "admin") {
       console.warn(
-        "❌ [AUTH] Admin user trying to access farmer route /app, redirecting to /admin"
+        "❌ [AUTH] Admin user trying to access farmer route /app, redirecting to /admin",
       );
       navigate("/admin", { replace: true });
       return;
     }
-    
+
     // If accessing /app (farmer route) but user is sysadmin -> redirect to /sysadmin
     if (currentPath === "/app" && currentUser?.role === "sysadmin") {
       console.warn(
-        "❌ [AUTH] SysAdmin user trying to access farmer route /app, redirecting to /sysadmin"
+        "❌ [AUTH] SysAdmin user trying to access farmer route /app, redirecting to /sysadmin",
       );
       navigate("/sysadmin", { replace: true });
       return;
     }
-    
-    // If accessing /admin (admin route) but user is NOT admin -> redirect to /login
+
+    // If accessing /admin (admin route) but user is NOT admin -> redirect to home
     if (currentPath.startsWith("/admin") && currentUser?.role !== "admin") {
       console.warn(
-        "❌ [AUTH] Unauthenticated or non-admin access to admin route, clearing session and redirecting to login:",
-        currentPath
+        "❌ [AUTH] Unauthenticated or non-admin access to admin route, clearing session and redirecting to home:",
+        currentPath,
       );
       setCurrentUser(null);
-      navigate("/login", { replace: true });
+      navigate("/", { replace: true });
       return;
     }
-    
-    // If in /app but no currentUser -> redirect to /login
+
+    // If in /app but no currentUser -> redirect to home
     if (currentPath === "/app" && !currentUser) {
       console.warn(
-        "❌ [AUTH] No currentUser on farmer route /app, redirecting to /login"
+        "❌ [AUTH] No currentUser on farmer route /app, redirecting to home",
       );
-      navigate("/login", { replace: true });
+      navigate("/", { replace: true });
       return;
     }
   }, [location.pathname, currentUser?.role, navigate, currentUser]);
@@ -750,6 +1096,7 @@ export default function App() {
         if (currentUser?.role === "admin") {
           // Admin: use their own id
           adminId = String(currentUser.id);
+          await createDefaultTasksForAdmin(adminId);
         } else if (currentUser?.admin_id && !currentUser?.role) {
           // Farmer: use their HTX's admin_id
           adminId = String(currentUser.admin_id);
@@ -891,31 +1238,8 @@ export default function App() {
         setIncidentReports([]);
       }
 
-      // Fetch farm data if user is admin
-      if (currentUser?.id && currentUser?.role === "admin") {
-        try {
-          const apiFarm = await farmAPI.getFarmByAdmin(String(currentUser.id));
-          if (apiFarm) {
-            setFarm(mapApiFarm(apiFarm));
-          }
-        } catch (error: any) {
-          // Check if it's a "Farm not found" error (404) - this is expected for new admin accounts
-          if (
-            error.message?.includes("Farm not found") ||
-            error.message?.includes("404")
-          ) {
-            console.log(
-              "Admin account chưa có thông tin trang trại - cần tạo mới",
-            );
-            setFarm(null); // Explicitly set to null for new accounts
-          } else {
-            console.warn(
-              "Không thể tải thông tin trang trại từ backend:",
-              error,
-            );
-          }
-        }
-      }
+      // Farm data no longer fetched from farms table (using admins table instead)
+      setFarm(null);
     };
 
     fetchInitialData();
@@ -949,8 +1273,11 @@ export default function App() {
         element={
           <HTXLoginScreen
             onBack={() => navigate("/")}
-            onLoginSuccess={(user) => {
+            onLoginSuccess={async (user) => {
               setCurrentUser(user);
+              if (user?.id) {
+                await createDefaultTasksForAdmin(user.id);
+              }
               navigate("/admin");
             }}
           />
@@ -1003,12 +1330,18 @@ export default function App() {
           <OnboardHTXScreen
             pendingRegistration={pendingAdminRegistration}
             onComplete={async (admin) => {
-              // Don't set currentUser - wait for sysadmin approval
-              // User must login again after approval
+              // Temporary: allow HTX to login immediately after registration
+              setCurrentUser({
+                id: admin?.id,
+                email: admin?.google_email,
+                name: admin?.name || admin?.google_email || "HTX",
+                role: "admin",
+              });
               setPendingAdminRegistration(null);
-              setTimeout(() => {
-                navigate("/", { replace: true });
-              }, 5000); // Redirect to landing after 5 seconds
+              if (admin?.id) {
+                await createDefaultTasksForAdmin(admin.id);
+              }
+              navigate("/admin", { replace: true });
             }}
           />
         }
@@ -1029,7 +1362,6 @@ export default function App() {
                 admin_report: "/admin/report",
                 admin_material: "/admin/material",
                 admin_process: "/admin/process",
-                admin_farm: "/admin/farm",
               };
               navigate(routes[screen] || "/");
             }}
@@ -1099,17 +1431,6 @@ export default function App() {
             onBack={() => navigate("/admin")}
             materials={materials}
             setMaterials={setMaterials}
-          />
-        }
-      />
-      <Route
-        path="/admin/farm"
-        element={
-          <FarmInformationScreen
-            onBack={() => navigate("/admin")}
-            farm={farm}
-            setFarm={setFarm}
-            currentUser={currentUser}
           />
         }
       />
@@ -1625,7 +1946,7 @@ function AddLogForm({
   );
   const [isScanning, setIsScanning] = useState(false);
   const [lastInitialDataId, setLastInitialDataId] = useState<string | null>(
-    initialData?.id || null
+    initialData?.id || null,
   );
 
   const [formData, setFormData] = useState<Partial<FarmLog>>({
@@ -1665,13 +1986,13 @@ function AddLogForm({
     console.log("  - currentTask:", formData.task);
     console.log("  - lastInitialDataId:", lastInitialDataId);
     console.log("  - initialData?.id:", initialData?.id);
-    
+
     // Only reset if task changed AND initialData hasn't just changed
     if (initialData?.id !== lastInitialDataId) {
       console.log("⏭️ Skipping reset because initialData just changed");
       return;
     }
-    
+
     console.log("🔄 Resetting form fields for task change (user interaction)");
     setFormData((prev) => ({
       ...prev,
@@ -1701,14 +2022,17 @@ function AddLogForm({
   useEffect(() => {
     console.log("⚡ initialData effect triggered");
     console.log("  - initialData?.id:", initialData?.id);
-    console.log("  - initialData?.defaultValues:", JSON.stringify(initialData?.defaultValues));
-    
+    console.log(
+      "  - initialData?.defaultValues:",
+      JSON.stringify(initialData?.defaultValues),
+    );
+
     if (initialData?.defaultValues) {
       console.log("✅ Has defaultValues, marking initialData as processed");
-      
+
       // Mark that we're processing this initialData ID
       setLastInitialDataId(initialData.id);
-      
+
       // ONLY set defaultValues fields, don't change task to prevent reset
       setFormData((prev) => {
         const newData = {
@@ -1743,12 +2067,12 @@ function AddLogForm({
     if (formData.lot && previousLogs && previousLogs.length > 0) {
       // Find the most recent log for this lot
       const lotsForSelectedLot = previousLogs.filter(
-        (log: any) => String(log.lot) === String(formData.lot)
+        (log: any) => String(log.lot) === String(formData.lot),
       );
-      
+
       if (lotsForSelectedLot.length > 0) {
         const lastLog = lotsForSelectedLot[0]; // Assuming logs are sorted by date, most recent first
-        
+
         // Auto-fill fields from the last log
         setFormData((prev) => ({
           ...prev,
@@ -2543,8 +2867,8 @@ function SettingsScreen({
   } | null;
   onLogout: () => void;
 }) {
-  const [farmData, setFarmData] = useState<any>(null);
-  const [loadingFarm, setLoadingFarm] = useState(true);
+  const [htxProfile, setHtxProfile] = useState<any>(null);
+  const [loadingHtxProfile, setLoadingHtxProfile] = useState(true);
   const [plantingZones, setPlantingZones] = useState<any[]>([]);
   const [loadingZones, setLoadingZones] = useState(true);
   const [certificateFile, setCertificateFile] = useState<File | null>(null);
@@ -2553,29 +2877,22 @@ function SettingsScreen({
   const displayName = currentUser?.name || "Người dùng";
 
   useEffect(() => {
-    const fetchFarmData = async () => {
+    const fetchHtxProfile = async () => {
       if (!currentUser?.admin_id) {
-        setLoadingFarm(false);
+        setLoadingHtxProfile(false);
         return;
       }
       try {
-        const farm = await farmAPI.getFarmByAdmin(currentUser.admin_id);
-        setFarmData(farm);
+        const profile = await adminAPI.getAdmin(currentUser.admin_id);
+        setHtxProfile(profile);
       } catch (error: any) {
-        if (
-          error.message?.includes("Farm not found") ||
-          error.message?.includes("404")
-        ) {
-          console.log("Tài khoản admin mới chưa có thông tin trang trại");
-          setFarmData(null);
-        } else {
-          console.warn("Không thể tải thông tin trang trại:", error);
-        }
+        console.warn("Không thể tải thông tin HTX từ bảng admins:", error);
+        setHtxProfile(null);
       } finally {
-        setLoadingFarm(false);
+        setLoadingHtxProfile(false);
       }
     };
-    fetchFarmData();
+    fetchHtxProfile();
   }, [currentUser?.admin_id]);
 
   useEffect(() => {
@@ -2694,36 +3011,34 @@ function SettingsScreen({
           </h3>
         </div>
         <div className="p-4 space-y-3 text-sm">
-          {loadingFarm ? (
+          {loadingHtxProfile ? (
             <div className="text-center py-4">
               <p className="text-gray-500">Đang tải thông tin...</p>
             </div>
-          ) : farmData ? (
+          ) : htxProfile ? (
             <>
               <div className="flex justify-between">
                 <span className="text-gray-500">Tên HTX:</span>
                 <span className="font-medium text-gray-800">
-                  {farmData.cooperative_name || "Chưa cập nhật"}
+                  {htxProfile.name || "Chưa cập nhật"}
                 </span>
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-500">Địa chỉ:</span>
                 <span className="font-medium text-gray-800 text-right">
-                  {farmData.address || "Chưa cập nhật"}
+                  {htxProfile.address || "Chưa cập nhật"}
                 </span>
               </div>
               <div className="flex justify-between">
-                <span className="text-gray-500">Tổng diện tích:</span>
+                <span className="text-gray-500">Số điện thoại:</span>
                 <span className="font-medium text-gray-800">
-                  {farmData.total_area
-                    ? `${farmData.total_area} hecta`
-                    : "Chưa cập nhật"}
+                  {htxProfile.phone || "Chưa cập nhật"}
                 </span>
               </div>
               <div className="flex justify-between">
-                <span className="text-gray-500">Cây trồng chính:</span>
+                <span className="text-gray-500">Email:</span>
                 <span className="font-medium text-gray-800">
-                  {farmData.main_crop_type || "Chưa cập nhật"}
+                  {htxProfile.google_email || "Chưa cập nhật"}
                 </span>
               </div>
             </>
@@ -2734,11 +3049,10 @@ function SettingsScreen({
               </div>
               <div>
                 <p className="text-gray-600 font-medium">
-                  Chưa có thông tin trang trại
+                  Chưa có thông tin HTX
                 </p>
                 <p className="text-sm text-gray-500 mt-1">
-                  Vui lòng liên hệ admin hệ thống để tạo thông tin trang trại
-                  trong phần Quản lý HTX
+                  Không tìm thấy dữ liệu đăng ký hợp tác xã từ hệ thống
                 </p>
               </div>
             </div>
@@ -3533,17 +3847,17 @@ function RegisterScreen({
             <div className="absolute inset-0 flex items-center pointer-events-none">
               <div className="w-full border-t border-gray-200"></div>
             </div>
-            <div className="relative flex justify-center text-sm">
+            {/* <div className="relative flex justify-center text-sm">
               <span className="relative z-10 px-2 bg-white text-gray-500">
                 Hoặc
               </span>
-            </div>
+            </div> */}
           </div>
 
           <button
             type="button"
             onClick={handleGoogleRegister}
-            className="w-full bg-white text-gray-700 border border-gray-300 py-3 rounded-xl font-medium hover:bg-gray-50 active:bg-gray-100 transition-colors flex items-center justify-center gap-2"
+            className="w-full bg-white text-gray-700 border border-gray-300 py-3 rounded-xl font-medium hover:bg-gray-50 active:bg-gray-100 transition-colors flex items-center justify-center gap-2 hidden"
           >
             <svg className="w-5 h-5" viewBox="0 0 24 24">
               <path
@@ -3635,21 +3949,11 @@ function HTXLoginScreen({
       try {
         const admin = await authAPI.adminLoginGoogle(payload.sub);
 
-        // Kiểm tra xem admin có được phê duyệt không
-        if (admin?.status !== "approved") {
-          const statusMessage =
-            admin?.status === "rejected"
-              ? "HTX của bạn đã bị từ chối"
-              : "HTX của bạn chưa được phê duyệt. Vui lòng chờ admin xác nhận.";
-          setError(statusMessage);
-          return;
-        }
-
         onLoginSuccess({
           id: admin?.id,
           email: admin?.email || payload.email,
           name: admin?.name || payload.email,
-          role: admin?.role || "htx",
+          role: "admin",
         });
       } catch (err: any) {
         setError(err?.message || "Đăng nhập Google thất bại");
@@ -3795,16 +4099,6 @@ function HTXLoginScreen({
     try {
       const admin = await authAPI.adminLogin(email, password);
 
-      // Kiểm tra xem admin có được phê duyệt không
-      if (admin?.status !== "approved") {
-        const statusMessage =
-          admin?.status === "rejected"
-            ? "HTX của bạn đã bị từ chối"
-            : "HTX của bạn chưa được phê duyệt. Vui lòng chờ admin xác nhận.";
-        setError(statusMessage);
-        return;
-      }
-
       onLoginSuccess({
         id: admin.id,
         email,
@@ -3894,15 +4188,15 @@ function HTXLoginScreen({
             <div className="absolute inset-0 flex items-center">
               <div className="w-full border-t border-gray-200"></div>
             </div>
-            <div className="relative flex justify-center text-sm">
+            {/* <div className="relative flex justify-center text-sm">
               <span className="px-2 bg-white text-gray-500">Hoặc</span>
-            </div>
+            </div> */}
           </div>
 
           <button
             type="button"
             onClick={handleGoogleLogin}
-            className="w-full bg-white text-gray-700 border border-gray-300 py-3 rounded-xl font-medium hover:bg-gray-50 active:bg-gray-100 transition-colors flex items-center justify-center gap-2"
+            className="w-full bg-white text-gray-700 border border-gray-300 py-3 rounded-xl font-medium hover:bg-gray-50 active:bg-gray-100 transition-colors flex items-center justify-center gap-2 hidden"
           >
             <svg className="w-5 h-5" viewBox="0 0 24 24">
               <path
@@ -4148,7 +4442,6 @@ function AdminDashboardScreen({
       | "admin_report"
       | "admin_material"
       | "admin_process"
-      | "admin_farm"
       | "login"
       | "app",
   ) => void;
@@ -4319,20 +4612,6 @@ function AdminDashboardScreen({
               Theo dõi kho phân bón, thuốc trừ sâu và vật tư nông nghiệp.
             </p>
           </div>
-          <div
-            onClick={() => onNavigate("admin_farm")}
-            className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition-shadow cursor-pointer"
-          >
-            <div className="w-12 h-12 bg-green-100 text-green-600 rounded-lg flex items-center justify-center mb-4">
-              <Building size={24} />
-            </div>
-            <h3 className="text-lg font-bold text-gray-800 mb-2">
-              Thông tin Trang trại
-            </h3>
-            <p className="text-sm text-gray-500">
-              Quản lý thông tin HTX, địa chỉ, diện tích và cây trồng chính.
-            </p>
-          </div>
         </div>
       </main>
     </div>
@@ -4424,6 +4703,10 @@ const MapContainerAny = MapContainer as unknown as React.ComponentType<any>;
 const TileLayerAny = TileLayer as unknown as React.ComponentType<any>;
 const PolygonAny = Polygon as unknown as React.ComponentType<any>;
 const MarkerAny = Marker as unknown as React.ComponentType<any>;
+const LayersControlAny =
+  LayersControl as unknown as React.ComponentType<any> & {
+    BaseLayer: React.ComponentType<any>;
+  };
 
 function FarmerManagementScreen({
   onBack,
@@ -4568,14 +4851,27 @@ function FarmerManagementScreen({
     try {
       // Edit mode - must have a valid ID
       if (view === "edit") {
+        console.log("🔧 [SAVE EDIT] Edit mode detected");
+        console.log("🔧 [SAVE EDIT] newFarmer object:", newFarmer);
+        console.log(
+          "🔧 [SAVE EDIT] newFarmer.id:",
+          newFarmer.id,
+          "Type:",
+          typeof newFarmer.id,
+        );
+
         if (!newFarmer.id) {
           alert("Lỗi: ID nông dân không hợp lệ");
-          console.error("Edit mode but newFarmer.id is:", newFarmer.id);
-          console.error("Full newFarmer object:", newFarmer);
+          console.error(
+            "❌ [SAVE EDIT] Edit mode but newFarmer.id is:",
+            newFarmer.id,
+          );
+          console.error("❌ [SAVE EDIT] Full newFarmer object:", newFarmer);
           return;
         }
 
-        console.log(`Updating farmer ${newFarmer.id} with:`, payload);
+        console.log(`📝 [FARMER] Updating farmer ${newFarmer.id}`);
+        console.log("📋 [PAYLOAD]", JSON.stringify(payload, null, 2));
         const updated = await farmAPI.updateFarmer(newFarmer.id, payload);
         setFarmers(
           farmers.map((f) =>
@@ -4586,10 +4882,11 @@ function FarmerManagementScreen({
       }
       // Create mode
       else {
-        console.log("Creating new farmer with:", payload);
+        console.log("🆕 [FARMER] Creating new farmer");
+        console.log("📋 [PAYLOAD]", JSON.stringify(payload, null, 2));
         const created = await farmAPI.createFarmer(payload);
         const mappedFarmer = mapApiFarmer(created);
-        console.log("Created farmer:", mappedFarmer);
+        console.log("✅ [FARMER] Created farmer:", mappedFarmer);
         setFarmers([...farmers, mappedFarmer]);
         alert("Tạo nông dân thành công!");
       }
@@ -4598,7 +4895,9 @@ function FarmerManagementScreen({
       setNewFarmer({});
       setSelectedZoneId("");
     } catch (err: any) {
-      console.error("Lỗi chi tiết:", err);
+      console.error("❌ [FARMER ERROR] Chi tiết lỗi:", err);
+      console.error("❌ [FARMER ERROR] Error message:", err?.message);
+      console.error("❌ [FARMER ERROR] Full error object:", err);
       setError(err?.message || "Lưu nông dân thất bại");
       alert(`Lỗi: ${err?.message || "Không thể lưu nông dân"}`);
     }
@@ -4615,17 +4914,31 @@ function FarmerManagementScreen({
   };
 
   const handleEdit = (farmer: Farmer) => {
-    console.log("Editing farmer:", farmer);
-    console.log("Farmer ID before setNewFarmer:", farmer.id);
+    console.log("🔧 [EDIT] Starting edit - farmer data:", farmer);
+    console.log("🔧 [EDIT] Farmer ID:", farmer.id, "Type:", typeof farmer.id);
+    console.log("🔧 [EDIT] Farmer admin:", farmer.admin);
 
     // Clean data from database - remove any whitespace/formatting issues
-    const cleanedFarmer = {
-      ...farmer,
+    // EXPLICITLY preserve id and admin fields
+    const cleanedFarmer: Farmer = {
+      id: farmer.id, // ✅ EXPLICITLY preserve ID
+      admin: farmer.admin, // ✅ EXPLICITLY preserve admin
+      adminName: farmer.adminName,
       phone: farmer.phone ? String(farmer.phone).trim() : "",
       pin: farmer.pin ? String(farmer.pin).trim() : "",
       cccd: farmer.cccd ? String(farmer.cccd).trim() : "",
       fullName: farmer.fullName ? String(farmer.fullName).trim() : "",
+      birthYear: farmer.birthYear ? String(farmer.birthYear).trim() : "",
+      managedLot: farmer.managedLot ? String(farmer.managedLot).trim() : "",
     };
+
+    console.log("🔧 [EDIT] Cleaned farmer object:", cleanedFarmer);
+    console.log(
+      "🔧 [EDIT] Cleaned farmer ID:",
+      cleanedFarmer.id,
+      "Type:",
+      typeof cleanedFarmer.id,
+    );
 
     // CRITICAL: First clear all errors BEFORE setting new farmer
     setValidationErrors({});
@@ -5303,12 +5616,24 @@ function LotDetailManagementScreen({
               zoom={14}
               style={{ height: "100%", width: "100%" }}
             >
-              <TileLayerAny
-                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                maxZoom={22}
-                maxNativeZoom={19}
-              />
+              <LayersControlAny position="topright">
+                <LayersControlAny.BaseLayer checked name="Bản đồ đường phố">
+                  <TileLayerAny
+                    attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                    maxZoom={22}
+                    maxNativeZoom={19}
+                  />
+                </LayersControlAny.BaseLayer>
+                <LayersControlAny.BaseLayer name="Bản đồ vệ tinh">
+                  <TileLayerAny
+                    attribution='&copy; <a href="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}">Esri</a>'
+                    url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+                    maxZoom={22}
+                    maxNativeZoom={19}
+                  />
+                </LayersControlAny.BaseLayer>
+              </LayersControlAny>
               <MapEvents onClick={handleMapClick} />
 
               {lot.latLngs && (
@@ -7117,289 +7442,7 @@ function ProcessManagementScreen({
   );
 }
 
-function FarmInformationScreen({
-  onBack,
-  farm,
-  setFarm,
-  currentUser,
-}: {
-  onBack: () => void;
-  farm: Farm | null;
-  setFarm: (farm: Farm | null) => void;
-  currentUser: { id?: string | number; name: string } | null;
-}) {
-  const [isEditing, setIsEditing] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
-  const [formData, setFormData] = useState<Partial<Farm>>({});
-
-  useEffect(() => {
-    const fetchFarmInfo = async () => {
-      if (!currentUser?.id) return;
-      try {
-        const response = await farmAPI.getFarmByAdmin(String(currentUser.id));
-        if (response) {
-          setFarm(mapApiFarm(response));
-          setFormData(mapApiFarm(response));
-        }
-      } catch (error: any) {
-        // Check if it's a "Farm not found" error (404) - this is expected for new admin accounts
-        if (
-          error.message?.includes("Farm not found") ||
-          error.message?.includes("404")
-        ) {
-          console.log(
-            "Tài khoản admin mới chưa có thông tin trang trại - cần tạo mới trong phần Thông tin Trang trại",
-          );
-          setFarm(null); // Explicitly set to null for new accounts
-          setFormData({
-            cooperativeName: "",
-            address: "",
-            totalArea: 0,
-            mainCropType: "",
-          }); // Set empty form data
-        } else {
-          console.warn("Không thể tải thông tin trang trại:", error);
-        }
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    fetchFarmInfo();
-  }, [currentUser?.id]);
-
-  const handleChange = (
-    e: React.ChangeEvent<
-      HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement
-    >,
-  ) => {
-    const { name, value } = e.target;
-    setFormData((prev) => ({
-      ...prev,
-      [name]:
-        name === "totalArea"
-          ? Number(value)
-          : name === "admin"
-            ? currentUser?.id
-            : value,
-    }));
-  };
-
-  const handleSave = async (e: React.FormEvent) => {
-    e.preventDefault();
-
-    try {
-      const payload = {
-        admin: currentUser?.id,
-        cooperative_name: formData.cooperativeName,
-        address: formData.address,
-        total_area: Number(formData.totalArea || 0),
-        main_crop_type: formData.mainCropType,
-      };
-
-      let updated;
-      if (farm?.id) {
-        // Update existing farm
-        updated = await farmAPI.updateFarm(farm.id, payload);
-      } else {
-        // Create new farm
-        updated = await farmAPI.createFarm(payload);
-      }
-
-      setFarm(mapApiFarm(updated));
-      setIsEditing(false);
-      alert(
-        farm?.id
-          ? "Cập nhật thông tin trang trại thành công!"
-          : "Tạo thông tin trang trại thành công!",
-      );
-    } catch (error: any) {
-      console.error("Lỗi khi lưu thông tin trang trại:", error);
-      alert("Không thể lưu thông tin. Vui lòng thử lại.");
-    }
-  };
-
-  return (
-    <div className="min-h-screen bg-gray-50 font-sans text-gray-900">
-      <header className="bg-emerald-700 text-white p-4 sticky top-0 z-10 shadow-md flex items-center gap-3">
-        <button
-          onClick={onBack}
-          className="p-1 -ml-1 hover:bg-emerald-800 rounded-full transition-colors"
-        >
-          <ArrowLeft size={24} />
-        </button>
-        <h1 className="text-xl font-bold">Thông tin Trang trại</h1>
-        {!isEditing && farm && (
-          <button
-            onClick={() => {
-              setIsEditing(true);
-              setFormData(farm);
-            }}
-            className="ml-auto px-4 py-2 bg-white text-emerald-700 rounded-lg font-medium hover:bg-gray-100 transition-colors flex items-center gap-2"
-          >
-            <svg
-              className="w-4 h-4"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth="2"
-                d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
-              ></path>
-            </svg>
-            Chỉnh sửa
-          </button>
-        )}
-      </header>
-
-      <main className="p-4 max-w-2xl mx-auto">
-        <Breadcrumb />
-
-        {isLoading ? (
-          <div className="flex justify-center items-center py-12">
-            <Loader2 size={32} className="animate-spin text-emerald-600" />
-          </div>
-        ) : farm && !isEditing ? (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 space-y-6">
-            <div>
-              <label className="block text-sm font-medium text-gray-500 mb-1">
-                Tên HTX
-              </label>
-              <p className="text-lg font-medium text-gray-900">
-                {farm.cooperativeName || "Chưa cập nhật"}
-              </p>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-500 mb-1">
-                Địa chỉ
-              </label>
-              <p className="text-gray-700">{farm.address || "Chưa cập nhật"}</p>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-500 mb-1">
-                  Tổng diện tích
-                </label>
-                <p className="text-lg font-medium text-gray-900">
-                  {farm.totalArea} ha
-                </p>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-500 mb-1">
-                  Cây trồng chính
-                </label>
-                <p className="text-lg font-medium text-gray-900">
-                  {farm.mainCropType || "Chưa cập nhật"}
-                </p>
-              </div>
-            </div>
-          </div>
-        ) : (
-          <form onSubmit={handleSave} className="space-y-6">
-            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 space-y-4">
-              <h2 className="text-lg font-bold text-gray-800 mb-4">
-                {farm
-                  ? "Cập nhật Thông tin Trang trại"
-                  : "Tạo Thông tin Trang trại"}
-              </h2>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Tên HTX <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  name="cooperativeName"
-                  required
-                  value={formData.cooperativeName || ""}
-                  onChange={handleChange}
-                  className="w-full rounded-lg border-gray-300 border p-2.5 focus:ring-emerald-500 focus:border-emerald-500"
-                  placeholder="VD: HTX Xã Liêm Tuyền"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Địa chỉ <span className="text-red-500">*</span>
-                </label>
-                <textarea
-                  name="address"
-                  required
-                  value={formData.address || ""}
-                  onChange={handleChange}
-                  className="w-full rounded-lg border-gray-300 border p-2.5 focus:ring-emerald-500 focus:border-emerald-500 resize-none"
-                  placeholder="Nhập địa chỉ trang trại"
-                  rows={3}
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Tổng diện tích (ha) <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="number"
-                    name="totalArea"
-                    required
-                    step="0.01"
-                    value={formData.totalArea || ""}
-                    onChange={handleChange}
-                    className="w-full rounded-lg border-gray-300 border p-2.5 focus:ring-emerald-500 focus:border-emerald-500"
-                    placeholder="VD: 50"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Cây trồng chính <span className="text-red-500">*</span>
-                  </label>
-                  <select
-                    name="mainCropType"
-                    required
-                    value={formData.mainCropType || ""}
-                    onChange={handleChange}
-                    className="w-full rounded-lg border-gray-300 border p-2.5 focus:ring-emerald-500 focus:border-emerald-500 bg-white"
-                  >
-                    <option value="">-- Chọn cây trồng --</option>
-                    <option value="Sầu riêng">Sầu riêng</option>
-                    <option value="Cà phê">Cà phê</option>
-                    <option value="Hồ tiêu">Hồ tiêu</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="flex gap-3 pt-4">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsEditing(false);
-                    if (farm) setFormData(farm);
-                  }}
-                  className="flex-1 px-4 py-2 text-gray-600 font-medium hover:bg-gray-100 rounded-lg transition-colors border border-gray-300"
-                >
-                  Hủy
-                </button>
-                <button
-                  type="submit"
-                  className="flex-1 px-4 py-2 bg-emerald-600 text-white font-medium hover:bg-emerald-700 rounded-lg transition-colors flex items-center justify-center gap-2"
-                >
-                  <Save size={18} /> Lưu thay đổi
-                </button>
-              </div>
-            </div>
-          </form>
-        )}
-      </main>
-    </div>
-  );
-}
+// FarmInformationScreen removed - using admins table data instead of farms table
 
 function MaterialManagementScreen({
   onBack,

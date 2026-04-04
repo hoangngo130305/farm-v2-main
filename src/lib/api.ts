@@ -257,10 +257,17 @@ export const apiCall = async <T = any>(
       errorData = { detail: errorText };
     }
 
-    console.error(`❌ [API ERROR] ${response.status}:`, errorData);
+    console.error(`❌ [API ERROR] ${response.status} ${response.statusText}`);
+    console.error(`📍 [API ENDPOINT] ${url}`);
+    console.error(`📋 [API RESPONSE TEXT] ${errorText}`);
+    console.error(`🔍 [API ERROR DATA]`, errorData);
 
     // ✅ IMPROVED ERROR MESSAGE - Show all validation errors
-    if (typeof errorData === "object" && !errorData.detail) {
+    if (
+      typeof errorData === "object" &&
+      !errorData.detail &&
+      Object.keys(errorData).length > 0
+    ) {
       const errorMessages = Object.entries(errorData)
         .map(
           ([field, messages]) =>
@@ -271,7 +278,9 @@ export const apiCall = async <T = any>(
     }
 
     throw new Error(
-      errorData.detail || `HTTP ${response.status}: ${response.statusText}`,
+      errorData.detail ||
+        errorData.error ||
+        `HTTP ${response.status}: ${response.statusText}`,
     );
   }
 
@@ -2362,19 +2371,50 @@ export const farmAPI = {
   },
 
   createFarmer: async (data: any): Promise<any> => {
-    return apiCall<any>(API_ENDPOINTS.FARMERS, {
-      method: "POST",
-      body: JSON.stringify(data),
-      requireAuth: false,
-    });
+    console.log(
+      "🆕 [API] createFarmer - Request data:",
+      JSON.stringify(data, null, 2),
+    );
+    try {
+      const result = await apiCall<any>(API_ENDPOINTS.FARMERS, {
+        method: "POST",
+        body: JSON.stringify(data),
+        requireAuth: false,
+      });
+      console.log("✅ [API] createFarmer - Success:", result);
+      return result;
+    } catch (error) {
+      console.error("❌ [API] createFarmer - Error:", error);
+      throw error;
+    }
   },
 
   updateFarmer: async (id: number | string, data: any): Promise<any> => {
-    return apiCall<any>(`${API_ENDPOINTS.FARMERS}${id}/`, {
-      method: "PATCH",
-      body: JSON.stringify(data),
-      requireAuth: false,
-    });
+    console.log(`📝 [API] updateFarmer called`);
+    console.log(`📝 [API] updateFarmer ID param:`, id, "Type:", typeof id);
+    console.log(`📝 [API] updateFarmer data:`, JSON.stringify(data, null, 2));
+
+    if (!id || id === "undefined") {
+      const error = "❌ Farmer ID is undefined - cannot update";
+      console.error(error);
+      throw new Error(error);
+    }
+
+    const endpoint = `${API_ENDPOINTS.FARMERS}${id}/`;
+    console.log(`📝 [API] updateFarmer endpoint:`, endpoint);
+
+    try {
+      const result = await apiCall<any>(endpoint, {
+        method: "PATCH",
+        body: JSON.stringify(data),
+        requireAuth: false,
+      });
+      console.log(`✅ [API] updateFarmer ${id} - Success:`, result);
+      return result;
+    } catch (error) {
+      console.error(`❌ [API] updateFarmer ${id} - Error:`, error);
+      throw error;
+    }
   },
 
   deleteFarmer: async (id: number | string): Promise<void> => {
@@ -2410,13 +2450,6 @@ export const farmAPI = {
       method: "GET",
     });
     return unwrapListResponse<any>(response);
-  },
-
-  getFarmByAdmin: async (adminId: string | number): Promise<any> => {
-    return apiCall<any>(`${API_BASE_URL}/farms/by_admin/?admin_id=${adminId}`, {
-      requireAuth: false,
-      method: "GET",
-    });
   },
 
   updateFarm: async (id: string | number, data: any): Promise<any> => {

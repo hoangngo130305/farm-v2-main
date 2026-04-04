@@ -842,50 +842,55 @@ export function SysAdminMapsScreen({ htxs }: any) {
     const loadZonesAndAdmins = async () => {
       try {
         setLoading(true);
-        
+
         // Load all zones from API
         const zones = await farmAPI.getPlantingZones();
-        
+
         // Load all admins to map admin ID to name
         const admins = await adminAPI.getAdmins();
         const adminMap: Record<string, string> = {};
         admins.forEach((admin: any) => {
-          adminMap[String(admin.id)] = admin.name || admin.google_email || "HTX";
+          adminMap[String(admin.id)] =
+            admin.name || admin.google_email || "HTX";
         });
         setAdminsMap(adminMap);
-        
+
         // Enrich zones with admin info
         const enrichedZones = (zones || []).map((zone: any) => {
           // Ensure lots array is present and has latLngs
           const lotsWithCoords = (zone.lots || []).map((lot: any) => ({
             ...lot,
-            latLngs: lot.latLngs || (lot.coordinates ? 
-              lot.coordinates.split(' ').map((coord: string) => 
-                coord.split(',').map((c: string) => parseFloat(c))
-              ) 
-              : []
-            )
+            latLngs:
+              lot.latLngs ||
+              (lot.coordinates
+                ? lot.coordinates
+                    .split(" ")
+                    .map((coord: string) =>
+                      coord.split(",").map((c: string) => parseFloat(c)),
+                    )
+                : []),
           }));
-          
+
           return {
             ...zone,
+            cropType: zone.crop_type || zone.cropType || "",
             lots: lotsWithCoords,
             htxName: adminMap[String(zone.admin)] || "HTX không xác định",
             htxId: zone.admin,
             // Convert lots to polygon format for Leaflet
-            polygon: lotsWithCoords && lotsWithCoords.length > 0
-              ? lotsWithCoords.flatMap((lot: any) => 
-                  (lot.latLngs && lot.latLngs.length > 0) 
-                    ? lot.latLngs 
-                    : []
-                )
-              : [],
-            area: lotsWithCoords && lotsWithCoords.length > 0
-              ? `${(lotsWithCoords.reduce((sum: number, lot: any) => sum + (lot.area || 0), 0)).toFixed(1)} ha`
-              : "0 ha",
+            polygon:
+              lotsWithCoords && lotsWithCoords.length > 0
+                ? lotsWithCoords.flatMap((lot: any) =>
+                    lot.latLngs && lot.latLngs.length > 0 ? lot.latLngs : [],
+                  )
+                : [],
+            area:
+              lotsWithCoords && lotsWithCoords.length > 0
+                ? `${lotsWithCoords.reduce((sum: number, lot: any) => sum + (lot.area || 0), 0).toFixed(1)} ha`
+                : "0 ha",
           };
         });
-        
+
         console.log("Enriched zones:", enrichedZones);
         setAllZones(enrichedZones);
       } catch (error) {
@@ -895,7 +900,7 @@ export function SysAdminMapsScreen({ htxs }: any) {
         setLoading(false);
       }
     };
-    
+
     loadZonesAndAdmins();
   }, []);
 
@@ -957,7 +962,10 @@ export function SysAdminMapsScreen({ htxs }: any) {
           <div className="flex-1 overflow-y-auto p-4 space-y-4">
             {loading ? (
               <div className="text-center py-8">
-                <Loader2 size={32} className="text-emerald-600 animate-spin mx-auto mb-2" />
+                <Loader2
+                  size={32}
+                  className="text-emerald-600 animate-spin mx-auto mb-2"
+                />
                 <p className="text-gray-500 text-sm">Đang tải dữ liệu...</p>
               </div>
             ) : filteredZones.length > 0 ? (
@@ -1017,7 +1025,10 @@ export function SysAdminMapsScreen({ htxs }: any) {
           {loading ? (
             <div className="w-full h-full flex items-center justify-center bg-gray-100">
               <div className="text-center">
-                <Loader2 size={48} className="text-emerald-600 animate-spin mx-auto mb-3" />
+                <Loader2
+                  size={48}
+                  className="text-emerald-600 animate-spin mx-auto mb-3"
+                />
                 <p className="text-gray-600">Đang tải bản đồ...</p>
               </div>
             </div>
@@ -1038,9 +1049,18 @@ export function SysAdminMapsScreen({ htxs }: any) {
                 return zone.lots.map((lot: any, lotIndex: number) => {
                   if (!lot.latLngs || lot.latLngs.length === 0) return null;
                   const lotKey = `${zoneIndex}-${lotIndex}`;
-                  const colors = ["#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899", "#06b6d4", "#14b8a6"];
+                  const colors = [
+                    "#3b82f6",
+                    "#10b981",
+                    "#f59e0b",
+                    "#ef4444",
+                    "#8b5cf6",
+                    "#ec4899",
+                    "#06b6d4",
+                    "#14b8a6",
+                  ];
                   const color = colors[lotIndex % colors.length];
-                  
+
                   return (
                     <PolygonAny
                       key={lotKey}
@@ -1062,20 +1082,34 @@ export function SysAdminMapsScreen({ htxs }: any) {
                             {zone.htxName}
                           </div>
                           <div className="text-xs text-gray-600 mb-3 pb-3 border-b border-gray-200">
-                            <div><span className="font-medium">Loại cây:</span> {zone.cropType || "N/A"}</div>
-                            <div><span className="font-medium">Diện tích lô:</span> {lot.area || "N/A"} ha</div>
+                            <div>
+                              <span className="font-medium">Loại cây:</span>{" "}
+                              {lot.crop_type ||
+                                lot.cropType ||
+                                zone.cropType ||
+                                "N/A"}
+                            </div>
+                            <div>
+                              <span className="font-medium">Diện tích lô:</span>{" "}
+                              {lot.area || "N/A"} ha
+                            </div>
                           </div>
 
                           {/* Tọa độ của lô */}
                           {lot.latLngs && lot.latLngs.length > 0 && (
                             <div className="mb-3 pb-3 border-b border-gray-200">
-                              <h5 className="font-semibold text-xs text-gray-700 mb-2">Tọa độ lô:</h5>
+                              <h5 className="font-semibold text-xs text-gray-700 mb-2">
+                                Tọa độ lô:
+                              </h5>
                               <div className="text-gray-600 font-mono text-[10px] space-y-0.5 bg-gray-50 p-2 rounded max-h-32 overflow-y-auto">
-                                {lot.latLngs.map((coord: [number, number], idx: number) => (
-                                  <div key={idx}>
-                                    {idx + 1}. {coord[0].toFixed(4)}, {coord[1].toFixed(4)}
-                                  </div>
-                                ))}
+                                {lot.latLngs.map(
+                                  (coord: [number, number], idx: number) => (
+                                    <div key={idx}>
+                                      {idx + 1}. {coord[0].toFixed(4)},{" "}
+                                      {coord[1].toFixed(4)}
+                                    </div>
+                                  ),
+                                )}
                               </div>
                             </div>
                           )}
@@ -1436,6 +1470,7 @@ export function SysAdminHTXDetailScreen({
   const [loadingFarmers, setLoadingFarmers] = useState(false);
   const [zones, setZones] = useState<any[]>([]);
   const [loadingZones, setLoadingZones] = useState(false);
+  const [totalArea, setTotalArea] = useState<string>("0 ha");
 
   useEffect(() => {
     const loadHtxData = async () => {
@@ -1492,6 +1527,27 @@ export function SysAdminHTXDetailScreen({
     loadFarmers();
     loadPlantingZones();
   }, [htx, id]);
+
+  // Calculate total area from zones and lots
+  useEffect(() => {
+    if (zones && zones.length > 0) {
+      let totalAreaValue = 0;
+      zones.forEach((zone: any) => {
+        if (zone.lots && Array.isArray(zone.lots)) {
+          zone.lots.forEach((lot: any) => {
+            if (lot && typeof lot === "object" && lot.area) {
+              totalAreaValue += parseFloat(lot.area) || 0;
+            }
+          });
+        }
+      });
+      setTotalArea(
+        totalAreaValue > 0 ? `${totalAreaValue.toFixed(1)} ha` : "0 ha",
+      );
+    } else {
+      setTotalArea("0 ha");
+    }
+  }, [zones]);
 
   if (!htx) {
     return (
@@ -1616,7 +1672,7 @@ export function SysAdminHTXDetailScreen({
                   </div>
                   <div className="bg-blue-50 p-4 rounded-xl border border-blue-100 text-center">
                     <div className="text-2xl font-bold text-blue-700">
-                      {htx.area}
+                      {totalArea}
                     </div>
                     <div className="text-sm text-blue-600">Diện tích</div>
                   </div>

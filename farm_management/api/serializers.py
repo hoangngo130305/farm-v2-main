@@ -188,6 +188,18 @@ class FarmerCreateSerializer(serializers.ModelSerializer):
         
         return value
 
+    def validate_admin(self, value):
+        """Validate admin exists"""
+        if value is None:
+            raise serializers.ValidationError("Hợp tác xã (admin) là bắt buộc.")
+        
+        # Check if admin exists
+        from .models import Admin
+        if not Admin.objects.filter(id=value.id if hasattr(value, 'id') else value).exists():
+            raise serializers.ValidationError(f"Hợp tác xã với ID {value} không tồn tại.")
+        
+        return value
+
 
 class FarmSerializer(serializers.ModelSerializer):
     admin_name = serializers.CharField(source='admin.name', read_only=True)
