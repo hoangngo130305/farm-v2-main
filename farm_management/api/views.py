@@ -2,18 +2,23 @@ from rest_framework import viewsets, status, filters
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from django_filters.rest_framework import DjangoFilterBackend
 from django.db.models import Q, F
+from django.core.files.storage import default_storage
+import json
+from uuid import uuid4
 from .models import (
-    Admin, SysAdmin, Farmer, Stage, Lot, PlantingZone, Task, TaskCategory,
+    Admin, SysAdmin, VietGAPRegistration, Farmer, Farm, Stage, Lot, PlantingZone, Task, TaskCategory,
     Material, FarmLog, IncidentReport
 )
 from .serializers import (
     AdminSerializer, AdminCreateSerializer, SysAdminSerializer, SysAdminCreateSerializer,
-    FarmerSerializer, FarmerCreateSerializer, StageSerializer, LotSerializer,
+    FarmerSerializer, FarmerCreateSerializer, FarmSerializer, StageSerializer, LotSerializer,
     PlantingZoneSerializer, TaskSerializer, TaskCategorySerializer,
     MaterialSerializer, FarmLogListSerializer, FarmLogCreateUpdateSerializer,
-    IncidentReportListSerializer, IncidentReportCreateUpdateSerializer
+    IncidentReportListSerializer, IncidentReportCreateUpdateSerializer,
+    VietGAPRegistrationListSerializer, VietGAPRegistrationCreateUpdateSerializer,
 )
 
 
@@ -114,8 +119,16 @@ class FarmerViewSet(viewsets.ModelViewSet):
     queryset = Farmer.objects.all()
     permission_classes = [AllowAny]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter]
-    search_fields = ['full_name', 'phone', 'google_email', 'managed_lot']
-    filterset_fields = ['phone', 'google_email', 'managed_lot']
+    search_fields = ['full_name', 'phone', 'google_email', 'managed_lot', 'admin__name']
+    filterset_fields = ['phone', 'google_email', 'managed_lot', 'admin']
+
+    def get_queryset(self):
+        """Filter farmers by admin if admin_id is provided in query params"""
+        queryset = Farmer.objects.all()
+        admin_id = self.request.query_params.get('admin_id')
+        if admin_id:
+            queryset = queryset.filter(admin_id=admin_id)
+        return queryset
 
     def get_serializer_class(self):
         if self.action in ['create', 'update', 'partial_update']:
@@ -151,6 +164,29 @@ class FarmerViewSet(viewsets.ModelViewSet):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
+class FarmViewSet(viewsets.ModelViewSet):
+    """ViewSet for Farm information"""
+    queryset = Farm.objects.all()
+    serializer_class = FarmSerializer
+    permission_classes = [AllowAny]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter]
+    search_fields = ['cooperative_name', 'main_crop_type', 'admin__name']
+    filterset_fields = ['admin']
+
+    @action(detail=False, methods=['get'])
+    def by_admin(self, request):
+        """Get farm info by admin"""
+        admin_id = request.query_params.get('admin_id')
+        if not admin_id:
+            return Response({'error': 'admin_id required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        farm = Farm.objects.filter(admin_id=admin_id).first()
+        if farm:
+            serializer = FarmSerializer(farm)
+            return Response(serializer.data)
+        return Response({'error': 'Farm not found'}, status=status.HTTP_404_NOT_FOUND)
+
+
 class StageViewSet(viewsets.ModelViewSet):
     """ViewSet for Stages"""
     queryset = Stage.objects.all()
@@ -174,9 +210,46 @@ class PlantingZoneViewSet(viewsets.ModelViewSet):
     queryset = PlantingZone.objects.all()
     serializer_class = PlantingZoneSerializer
     permission_classes = [AllowAny]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter]
     search_fields = ['name', 'crop_type']
-    filterset_fields = ['crop_type']
+    filterset_fields = ['admin', 'crop_type']
+
+    def _save_uploaded_files(self, uploaded_files):
+        saved_urls = []
+        for uploaded_file in uploaded_files:
+            filename = f"planting_zone_certificates/{uuid4().hex}_{uploaded_file.name}"
+            saved_path = default_storage.save(filename, uploaded_file)
+            saved_urls.append(default_storage.url(saved_path))
+        return saved_urls
+
+    def create(self, request, *args, **kwargs):
+        data = request.data.copy()
+        uploaded_files = request.FILES.getlist('certificate_files')
+        if uploaded_files:
+            saved_urls = self._save_uploaded_files(uploaded_files)
+            data['certificate_files'] = json.dumps(saved_urls)
+
+        serializer = self.get_serializer(data=data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        headers = self.get_success_headers(serializer.data)
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+
+    def update(self, request, *args, **kwargs):
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        data = request.data.copy()
+        uploaded_files = request.FILES.getlist('certificate_files')
+        if uploaded_files:
+            existing_files = instance.certificate_files or []
+            new_files = self._save_uploaded_files(uploaded_files)
+            data['certificate_files'] = json.dumps(existing_files + new_files)
+
+        serializer = self.get_serializer(instance, data=data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+        return Response(serializer.data)
 
 
 class TaskViewSet(viewsets.ModelViewSet):
@@ -186,16 +259,81 @@ class TaskViewSet(viewsets.ModelViewSet):
     permission_classes = [AllowAny]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter]
     search_fields = ['name']
-    filterset_fields = ['requires_materials']
+    filterset_fields = ['requires_materials', 'admin']
+
+    def get_queryset(self):
+        queryset = Task.objects.all()
+        admin_id = self.request.query_params.get('admin_id')
+        if admin_id:
+            queryset = queryset.filter(admin_id=admin_id)
+        return queryset
 
 
 class TaskCategoryViewSet(viewsets.ModelViewSet):
-    """ViewSet for Task Categories"""
+    """ViewSet for Task Categories - visible only to farmers assigned to an HTX"""
     queryset = TaskCategory.objects.all()
     serializer_class = TaskCategorySerializer
     permission_classes = [AllowAny]
-    filter_backends = [filters.SearchFilter]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter]
     search_fields = ['name']
+    filterset_fields = []
+
+    def get_queryset(self):
+        """
+        Task categories are only visible to farmers that are assigned to an HTX.
+        Query params: 
+        - farmer_id: the farmer requesting the categories
+        - admin_id: the admin/HTX requesting the categories
+        If no farmer_id/admin_id provided, assume admin access and return all categories.
+        """
+        farmer_id = self.request.query_params.get('farmer_id')
+        admin_id = self.request.query_params.get('admin_id')
+        
+        if farmer_id:
+            # Farmer is requesting - check if farmer exists and has an admin (HTX) assigned
+            farmer = Farmer.objects.filter(id=farmer_id, admin__isnull=False).first()
+            if farmer:
+                # Farmer is assigned to HTX, show all categories
+                return TaskCategory.objects.all()
+            else:
+                # Farmer either doesn't exist or has no HTX assigned - deny access
+                return TaskCategory.objects.none()
+        else:
+            # No farmer_id provided - assume admin/system access, return all categories
+            return TaskCategory.objects.all()
+    
+    def list(self, request, *args, **kwargs):
+        """Override list to filter task_ids by admin_id"""
+        response = super().list(request, *args, **kwargs)
+        
+        # Get admin_id from query params to filter task_ids
+        admin_id = request.query_params.get('admin_id')
+        farmer_id = request.query_params.get('farmer_id')
+        
+        # Determine which admin_id to use for filtering task_ids
+        filter_admin_id = None
+        if admin_id:
+            filter_admin_id = admin_id
+        elif farmer_id:
+            # If farmer_id provided, get the farmer's admin_id (HTX)
+            farmer = Farmer.objects.filter(id=farmer_id).first()
+            if farmer and farmer.admin_id:
+                filter_admin_id = farmer.admin_id
+        
+        # Filter task_ids to only include tasks for this admin
+        if filter_admin_id:
+            for category in response.data.get('results', []):
+                if 'task_ids' in category:
+                    # Filter task_ids to only include tasks belonging to the admin
+                    original_task_ids = category['task_ids']
+                    filtered_task_ids = []
+                    for task_id in original_task_ids:
+                        if Task.objects.filter(id=task_id, admin_id=filter_admin_id).exists():
+                            filtered_task_ids.append(task_id)
+                    category['task_ids'] = filtered_task_ids
+        
+        return response
+        return TaskCategory.objects.none()
 
 
 class MaterialViewSet(viewsets.ModelViewSet):
@@ -205,7 +343,7 @@ class MaterialViewSet(viewsets.ModelViewSet):
     permission_classes = [AllowAny]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter]
     search_fields = ['name', 'active_ingredient']
-    filterset_fields = ['type', 'is_vietgap']
+    filterset_fields = ['type', 'is_vietgap', 'status']
 
     @action(detail=False, methods=['get'])
     def low_stock(self, request):
@@ -215,15 +353,56 @@ class MaterialViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
 
+class VietGAPRegistrationViewSet(viewsets.ModelViewSet):
+    """ViewSet for VietGAP / GACC registration requests"""
+    queryset = VietGAPRegistration.objects.all()
+    permission_classes = [AllowAny]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['admin__name', 'registration_type', 'region_code', 'status', 'notes']
+    filterset_fields = ['admin', 'registration_type', 'status']
+    ordering_fields = ['created_at']
+    ordering = ['-created_at']
+
+    def get_serializer_class(self):
+        if self.action in ['list', 'retrieve']:
+            return VietGAPRegistrationListSerializer
+        return VietGAPRegistrationCreateUpdateSerializer
+
+    @action(detail=False, methods=['get'])
+    def by_admin(self, request):
+        admin_id = request.query_params.get('admin_id')
+        if not admin_id:
+            return Response({'error': 'admin_id required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        requests = VietGAPRegistration.objects.filter(admin_id=admin_id)
+        serializer = VietGAPRegistrationListSerializer(requests, many=True)
+        return Response(serializer.data)
+
+
 class FarmLogViewSet(viewsets.ModelViewSet):
     """ViewSet for Farm Logs"""
     queryset = FarmLog.objects.all()
     permission_classes = [AllowAny]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['farmer__full_name', 'task__name', 'stage__name', 'lot__name']
-    filterset_fields = ['farmer', 'stage', 'lot', 'task']
+    filterset_fields = ['farmer', 'stage', 'lot', 'task', 'farmer__admin']
     ordering_fields = ['datetime', 'created_at']
     ordering = ['-datetime']
+
+    def get_queryset(self):
+        """Filter logs by admin_id (for admins) or farmer_id (for farmers)"""
+        queryset = FarmLog.objects.all()
+        admin_id = self.request.query_params.get('admin_id')
+        farmer_id = self.request.query_params.get('farmer_id')
+        
+        if admin_id:
+            # Admin filtering: show logs of farmers under this admin
+            queryset = queryset.filter(farmer__admin_id=admin_id)
+        elif farmer_id:
+            # Farmer filtering: show only this farmer's logs
+            queryset = queryset.filter(farmer_id=farmer_id)
+        
+        return queryset
 
     def get_serializer_class(self):
         if self.action in ['list', 'retrieve']:
@@ -270,9 +449,17 @@ class IncidentReportViewSet(viewsets.ModelViewSet):
     permission_classes = [AllowAny]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['farmer__full_name', 'report_type', 'description']
-    filterset_fields = ['farmer', 'lot', 'report_type']
+    filterset_fields = ['farmer', 'lot', 'report_type', 'farmer__admin']
     ordering_fields = ['datetime', 'created_at']
     ordering = ['-datetime']
+
+    def get_queryset(self):
+        """Filter reports by admin_id if provided"""
+        queryset = IncidentReport.objects.all()
+        admin_id = self.request.query_params.get('admin_id')
+        if admin_id:
+            queryset = queryset.filter(farmer__admin_id=admin_id)
+        return queryset
 
     def get_serializer_class(self):
         if self.action in ['list', 'retrieve']:

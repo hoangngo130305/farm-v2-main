@@ -9,9 +9,9 @@
 
 /**
  * Django Backend API Base URL
- * Hard-coded to localhost for development
+ * Hard-coded to production backend for deployment
  */
-export const API_BASE_URL = "http://127.0.0.1:8000/api"; // Backend Django local
+export const API_BASE_URL = "https://htxvn.org//api"; // Backend Django remote
 
 export const GOOGLE_CLIENT_ID =
   "211407744910-3h79kbm17jrqs4eu6brb7lvvs15acf5i.apps.googleusercontent.com";
@@ -32,6 +32,7 @@ export const API_ENDPOINTS = {
   },
   FARM_LOGS: "/farm-logs/",
   INCIDENT_REPORTS: "/incident-reports/",
+  VIETGAP_REGISTRATIONS: "/vietgap-registrations/",
   FARMERS: "/farmers/",
   ADMINS: "/admins/",
   PLANTING_ZONES: "/planting-zones/",
@@ -82,7 +83,7 @@ export const API_ENDPOINTS = {
   ORDER_STATUS_HISTORY: "/order-status-history/",
   ORDER_STATUS_HISTORY_DETAIL: (id: number) => `/order-status-history/${id}/`,
 };
-export const MEDIA_BASE_URL = "http://14.224.210.210:8008";
+export const MEDIA_BASE_URL = "https://htxvn.org/";
 
 /**
  * Get full URL for media files (PDF, images)

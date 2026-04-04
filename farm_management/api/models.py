@@ -4,6 +4,12 @@ from django.db import models
 
 class Admin(models.Model):
     """Model for admin/manager login"""
+    STATUS_CHOICES = [
+        ('pending', 'Dang tham dinh'),
+        ('approved', 'Da phe duyet'),
+        ('rejected', 'Tu choi'),
+    ]
+    
     phone = models.CharField(max_length=20, unique=True, null=True, blank=True)
     pin = models.CharField(max_length=10, null=True, blank=True)
     password = models.CharField(max_length=128, null=True, blank=True)
@@ -13,6 +19,7 @@ class Admin(models.Model):
     registration_certificate = models.CharField(max_length=255, null=True, blank=True)
     google_id = models.CharField(max_length=255, unique=True, null=True, blank=True)
     google_email = models.EmailField(unique=True, null=True, blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -54,8 +61,52 @@ class SysAdmin(models.Model):
         return check_password(raw_password, self.password)
 
 
+class VietGAPRegistration(models.Model):
+    REGISTRATION_TYPES = [
+        ('vietgap', 'VietGAP'),
+        ('gacc', 'GACC'),
+    ]
+
+    STATUS_CHOICES = [
+        ('pending', 'Đang thẩm định'),
+        ('approved', 'Đã cấp mã'),
+        ('rejected', 'Cần bổ sung'),
+    ]
+
+    admin = models.ForeignKey(
+        Admin,
+        on_delete=models.CASCADE,
+        related_name='registration_requests',
+    )
+    registration_type = models.CharField(max_length=20, choices=REGISTRATION_TYPES)
+    crop_type = models.CharField(max_length=100, null=True, blank=True)
+    production_quantity = models.CharField(max_length=100, null=True, blank=True)
+    planting_zone = models.CharField(max_length=255, null=True, blank=True)
+    region_code = models.CharField(max_length=100, null=True, blank=True)
+    document_files = models.JSONField(default=list, blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    notes = models.TextField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'vietgap_registrations'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.admin.name} - {self.get_registration_type_display()}"
+
+
 class Farmer(models.Model):
     """Model for farmer/user login and management"""
+    admin = models.ForeignKey(
+        Admin,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='farmers',
+        help_text="Hợp tác xã mà nông dân thuộc về"
+    )
     phone = models.CharField(max_length=20, unique=True, null=True, blank=True)
     pin = models.CharField(max_length=10, null=True, blank=True)
     cccd = models.CharField(max_length=20, unique=True, null=True, blank=True)
@@ -72,7 +123,29 @@ class Farmer(models.Model):
         ordering = ['-created_at']
 
     def __str__(self):
-        return f"{self.full_name} - {self.phone or self.google_email}"
+        return f"{self.full_name} - {self.phone or self.google_email} ({self.admin.name})"
+
+
+class Farm(models.Model):
+    """Farm information"""
+    admin = models.OneToOneField(
+        Admin,
+        on_delete=models.CASCADE,
+        related_name='farm_info',
+    )
+    cooperative_name = models.CharField(max_length=255)
+    address = models.TextField()
+    total_area = models.DecimalField(max_digits=10, decimal_places=2)
+    main_crop_type = models.CharField(max_length=100)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'farms'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.cooperative_name} - {self.admin.name}"
 
 
 class Stage(models.Model):
@@ -103,9 +176,17 @@ class Lot(models.Model):
 
 class PlantingZone(models.Model):
     """Planting zones for crop management"""
+    admin = models.ForeignKey(
+        Admin,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='planting_zones',
+    )
     crop_type = models.CharField(max_length=100)
     name = models.CharField(max_length=100)
     lots = models.JSONField(default=list, blank=True)  # Array of LandLot objects
+    certificate_files = models.JSONField(default=list, blank=True)  # Uploaded QSDĐ file URLs
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -118,8 +199,13 @@ class PlantingZone(models.Model):
 
 
 class Task(models.Model):
-    """Farm tasks/activities"""
-    name = models.CharField(max_length=100, unique=True)
+    """Farm tasks/activities - each task must be assigned to an admin (HTX)"""
+    admin = models.ForeignKey(
+        Admin,
+        on_delete=models.CASCADE,
+        related_name='tasks'
+    )
+    name = models.CharField(max_length=100)
     icon = models.CharField(max_length=50, null=True, blank=True)
     color = models.CharField(max_length=50, null=True, blank=True)
     requires_materials = models.BooleanField(default=False)
@@ -129,13 +215,14 @@ class Task(models.Model):
     class Meta:
         db_table = 'tasks'
         ordering = ['name']
+        unique_together = ('admin', 'name')
 
     def __str__(self):
         return self.name
 
 
 class TaskCategory(models.Model):
-    """Task categories for grouping"""
+    """Global task categories for grouping - shared by all HTX/admin users"""
     name = models.CharField(max_length=100, unique=True)
     task_ids = models.JSONField(default=list, blank=True)  # Array of task IDs
     created_at = models.DateTimeField(auto_now_add=True)
@@ -160,6 +247,12 @@ class Material(models.Model):
     type = models.CharField(max_length=50, choices=MATERIAL_TYPES)
     active_ingredient = models.CharField(max_length=100, null=True, blank=True)
     is_vietgap = models.BooleanField(default=False)
+    STATUS_CHOICES = [
+        ("active", "Cho phép sử dụng"),
+        ("inactive", "Hạn chế sử dụng"),
+        ("banned", "Cấm sử dụng"),
+    ]
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="active")
     unit = models.CharField(max_length=20)
     quantity = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     min_stock = models.DecimalField(max_digits=10, decimal_places=2, default=0)

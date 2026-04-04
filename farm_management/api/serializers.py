@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from .models import (
-    Admin, SysAdmin, Farmer, Stage, Lot, PlantingZone, Task, TaskCategory,
+    Admin, SysAdmin, VietGAPRegistration, Farmer, Farm, Stage, Lot, PlantingZone, Task, TaskCategory,
     Material, FarmLog, IncidentReport
 )
 
@@ -17,6 +17,7 @@ class AdminSerializer(serializers.ModelSerializer):
             'registration_certificate',
             'google_id',
             'google_email',
+            'status',
             'created_at',
             'updated_at',
         ]
@@ -37,6 +38,7 @@ class AdminCreateSerializer(serializers.ModelSerializer):
             'registration_certificate',
             'google_id',
             'google_email',
+            'status',
         ]
         read_only_fields = ['id']
         extra_kwargs = {
@@ -92,17 +94,76 @@ class SysAdminCreateSerializer(serializers.ModelSerializer):
         return instance
 
 
+class VietGAPRegistrationListSerializer(serializers.ModelSerializer):
+    htx_name = serializers.CharField(source='admin.name', read_only=True)
+    registration_type_label = serializers.CharField(
+        source='get_registration_type_display', read_only=True,
+    )
+    status_label = serializers.CharField(source='get_status_display', read_only=True)
+
+    class Meta:
+        model = VietGAPRegistration
+        fields = [
+            'id',
+            'admin',
+            'htx_name',
+            'registration_type',
+            'registration_type_label',
+            'crop_type',
+            'production_quantity',
+            'planting_zone',
+            'region_code',
+            'status',
+            'status_label',
+            'document_files',
+            'notes',
+            'created_at',
+            'updated_at',
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+
+class VietGAPRegistrationCreateUpdateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = VietGAPRegistration
+        fields = [
+            'admin',
+            'registration_type',
+            'crop_type',
+            'production_quantity',
+            'planting_zone',
+            'region_code',
+            'status',
+            'document_files',
+            'notes',
+        ]
+
+
 class FarmerSerializer(serializers.ModelSerializer):
+    admin_name = serializers.CharField(source='admin.name', read_only=True)
+
     class Meta:
         model = Farmer
-        fields = ['id', 'phone', 'cccd', 'full_name', 'birth_year', 'managed_lot', 'google_id', 'google_email', 'created_at', 'updated_at']
+        fields = ['id', 'admin', 'admin_name', 'phone', 'cccd', 'full_name', 'birth_year', 'managed_lot', 'google_id', 'google_email', 'created_at', 'updated_at']
         read_only_fields = ['id', 'created_at', 'updated_at']
 
 
 class FarmerCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Farmer
-        fields = ['phone', 'pin', 'cccd', 'full_name', 'birth_year', 'managed_lot', 'google_id', 'google_email']
+        fields = ['admin', 'phone', 'pin', 'cccd', 'full_name', 'birth_year', 'managed_lot', 'google_id', 'google_email']
+        extra_kwargs = {
+            'admin': {'required': True},
+        }
+
+
+class FarmSerializer(serializers.ModelSerializer):
+    admin_name = serializers.CharField(source='admin.name', read_only=True)
+
+    class Meta:
+        model = Farm
+        fields = ['id', 'admin', 'admin_name', 'cooperative_name', 'address', 'total_area', 'main_crop_type', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'created_at', 'updated_at']
 
 
 class StageSerializer(serializers.ModelSerializer):
@@ -122,15 +183,21 @@ class LotSerializer(serializers.ModelSerializer):
 class PlantingZoneSerializer(serializers.ModelSerializer):
     class Meta:
         model = PlantingZone
-        fields = ['id', 'crop_type', 'name', 'lots', 'created_at', 'updated_at']
+        fields = ['id', 'crop_type', 'name', 'lots', 'certificate_files', 'admin', 'created_at', 'updated_at']
         read_only_fields = ['id', 'created_at', 'updated_at']
 
 
 class TaskSerializer(serializers.ModelSerializer):
     class Meta:
         model = Task
-        fields = ['id', 'name', 'icon', 'color', 'requires_materials', 'default_values', 'created_at']
+        fields = ['id', 'name', 'icon', 'color', 'requires_materials', 'default_values', 'admin', 'created_at']
         read_only_fields = ['id', 'created_at']
+    
+    def validate_admin(self, value):
+        """Ensure admin is provided when creating task"""
+        if value is None:
+            raise serializers.ValidationError("Admin (HTX) assignment is required for tasks.")
+        return value
 
 
 class TaskCategorySerializer(serializers.ModelSerializer):
@@ -143,7 +210,7 @@ class TaskCategorySerializer(serializers.ModelSerializer):
 class MaterialSerializer(serializers.ModelSerializer):
     class Meta:
         model = Material
-        fields = ['id', 'name', 'type', 'active_ingredient', 'is_vietgap', 'unit', 'quantity', 'min_stock', 'created_at', 'updated_at']
+        fields = ['id', 'name', 'type', 'active_ingredient', 'is_vietgap', 'status', 'unit', 'quantity', 'min_stock', 'created_at', 'updated_at']
         read_only_fields = ['id', 'created_at', 'updated_at']
 
 

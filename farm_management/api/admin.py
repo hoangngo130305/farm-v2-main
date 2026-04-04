@@ -1,8 +1,8 @@
 from django.contrib import admin
 from django.utils.html import format_html
 from .models import (
-    Admin, Farmer, Stage, Lot, PlantingZone, Task, TaskCategory,
-    Material, FarmLog, IncidentReport
+    Admin, Farmer, Farm, Stage, Lot, PlantingZone, Task, TaskCategory,
+    Material, FarmLog, IncidentReport, VietGAPRegistration
 )
 
 
@@ -37,13 +37,40 @@ class AdminAdmin(admin.ModelAdmin):
     )
 
 
-@admin.register(Farmer)
-class FarmerAdmin(admin.ModelAdmin):
-    list_display = ['full_name', 'phone', 'cccd', 'managed_lot', 'created_at']
-    search_fields = ['full_name', 'phone', 'cccd', 'google_email']
-    list_filter = ['managed_lot', 'created_at']
+@admin.register(Farm)
+class FarmAdmin(admin.ModelAdmin):
+    list_display = ['cooperative_name', 'admin_name', 'main_crop_type', 'total_area', 'created_at']
+    search_fields = ['cooperative_name', 'admin__name', 'main_crop_type']
+    list_filter = ['main_crop_type', 'created_at']
     readonly_fields = ['created_at', 'updated_at']
     fieldsets = (
+        ('Thông tin HTX', {
+            'fields': ('admin', 'cooperative_name', 'address')
+        }),
+        ('Thông tin trang trại', {
+            'fields': ('total_area', 'main_crop_type')
+        }),
+        ('Timestamps', {
+            'fields': ('created_at', 'updated_at'),
+            'classes': ('collapse',)
+        }),
+    )
+
+    def admin_name(self, obj):
+        return obj.admin.name
+    admin_name.short_description = 'Quản lý viên'
+
+
+@admin.register(Farmer)
+class FarmerAdmin(admin.ModelAdmin):
+    list_display = ['full_name', 'admin_name', 'phone', 'cccd', 'managed_lot', 'created_at']
+    search_fields = ['full_name', 'phone', 'cccd', 'google_email', 'admin__name']
+    list_filter = ['managed_lot', 'admin__name', 'created_at']
+    readonly_fields = ['created_at', 'updated_at']
+    fieldsets = (
+        ('Thông tin HTX', {
+            'fields': ('admin',)
+        }),
         ('Thông tin cá nhân', {
             'fields': ('full_name', 'birth_year', 'cccd')
         }),
@@ -62,6 +89,10 @@ class FarmerAdmin(admin.ModelAdmin):
             'classes': ('collapse',)
         }),
     )
+
+    def admin_name(self, obj):
+        return obj.admin.name
+    admin_name.short_description = 'HTX'
 
 
 @admin.register(Stage)
@@ -130,13 +161,13 @@ class TaskCategoryAdmin(admin.ModelAdmin):
 
 @admin.register(Material)
 class MaterialAdmin(admin.ModelAdmin):
-    list_display = ['name', 'type', 'quantity', 'unit', 'vietgap_badge', 'stock_warning', 'created_at']
+    list_display = ['name', 'type', 'quantity', 'unit', 'status', 'vietgap_badge', 'stock_warning', 'created_at']
     search_fields = ['name', 'active_ingredient']
-    list_filter = ['type', 'is_vietgap', 'created_at']
+    list_filter = ['type', 'is_vietgap', 'status', 'created_at']
     readonly_fields = ['created_at', 'updated_at']
     fieldsets = (
         ('Thông tin cơ bản', {
-            'fields': ('name', 'type', 'active_ingredient', 'is_vietgap')
+            'fields': ('name', 'type', 'active_ingredient', 'is_vietgap', 'status')
         }),
         ('Kho', {
             'fields': ('unit', 'quantity', 'min_stock')
@@ -237,3 +268,28 @@ class IncidentReportAdmin(admin.ModelAdmin):
     def lot_name(self, obj):
         return obj.lot.name if obj.lot else '-'
     lot_name.short_description = 'Lô'
+
+
+@admin.register(VietGAPRegistration)
+class VietGAPRegistrationAdmin(admin.ModelAdmin):
+    list_display = ['admin_name', 'registration_type', 'region_code', 'status', 'created_at']
+    search_fields = ['admin__name', 'registration_type', 'region_code', 'notes']
+    list_filter = ['registration_type', 'status', 'created_at']
+    readonly_fields = ['created_at', 'updated_at']
+    fieldsets = (
+        ('Thông tin HTX', {
+            'fields': ('admin', 'registration_type', 'region_code', 'status')
+        }),
+        ('Tài liệu & ghi chú', {
+            'fields': ('document_files', 'notes'),
+            'classes': ('collapse',)
+        }),
+        ('Timestamps', {
+            'fields': ('created_at', 'updated_at'),
+            'classes': ('collapse',)
+        }),
+    )
+
+    def admin_name(self, obj):
+        return obj.admin.name
+    admin_name.short_description = 'HTX'

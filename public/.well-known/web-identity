@@ -1,0 +1,6 @@
+{
+  "provider_urls": [
+    "https://accounts.google.com"
+  ],
+  "connectors_supported": true
+}

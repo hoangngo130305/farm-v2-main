@@ -30,8 +30,42 @@ import {
   FilePlus,
 } from "lucide-react";
 import { MapContainer, TileLayer, Polygon, Popup, useMap } from "react-leaflet";
-import { authAPI, adminAPI } from "./lib/api";
+import { authAPI, adminAPI, farmAPI } from "./lib/api";
 import "leaflet/dist/leaflet.css";
+
+type HTX = {
+  id: string;
+  name?: string;
+  representative?: string;
+  phone?: string;
+  email?: string;
+  address?: string;
+  registrationDate?: string;
+  status?: string;
+  farmers?: number;
+  area?: string;
+  activeLogs?: number;
+  documents?: any[];
+  zones?: any[];
+};
+
+type VietgapReq = {
+  id: string;
+  admin?: string;
+  htxName?: string;
+  registration_type?: string;
+  registration_type_label?: string;
+  crop_type?: string;
+  production_quantity?: string;
+  planting_zone?: string;
+  region_code?: string;
+  date?: string;
+  document?: string;
+  status?: string;
+  status_label?: string;
+  document_files?: string[];
+  notes?: string;
+};
 
 const MapContainerAny = MapContainer as unknown as React.ComponentType<any>;
 const TileLayerAny = TileLayer as unknown as React.ComponentType<any>;
@@ -51,6 +85,64 @@ function MapController({
     }
   }, [center, zoom, map]);
   return null;
+}
+
+function normalizeVietGAPRequest(req: any, htxs: any[] = []): any {
+  const adminName =
+    req.htx_name ||
+    (req.admin && typeof req.admin === "object" ? req.admin.name : undefined) ||
+    htxs.find((h) => String(h.id) === String(req.admin))?.name ||
+    req.htxName ||
+    "Hợp tác xã";
+
+  const registrationType = req.registration_type || req.regType || "vietgap";
+
+  const status =
+    req.status === "reviewing"
+      ? "pending"
+      : req.status || req.status || "pending";
+
+  const documentFiles = Array.isArray(req.document_files)
+    ? req.document_files
+    : req.documentFiles
+      ? Array.isArray(req.documentFiles)
+        ? req.documentFiles
+        : [req.documentFiles]
+      : req.document
+        ? [req.document]
+        : [];
+
+  return {
+    id: String(req.id || Date.now()),
+    admin: req.admin || null,
+    htxName: adminName,
+    registration_type: registrationType,
+    registration_type_label:
+      req.registration_type_label ||
+      (registrationType === "gacc" ? "GACC" : "VietGAP"),
+    crop_type: req.crop_type || "",
+    production_quantity: req.production_quantity || "",
+    planting_zone: req.planting_zone || "",
+    region_code: req.region_code || req.regionCode || "",
+    status,
+    status_label:
+      req.status_label ||
+      (status === "approved"
+        ? "Đã cấp mã"
+        : status === "rejected"
+          ? "Cần bổ sung"
+          : "Đang thẩm định"),
+    document_files: documentFiles,
+    document:
+      req.document ||
+      documentFiles[0] ||
+      `HoSo_${registrationType.toUpperCase()}_${adminName.replace(/\s+/g, "")}.pdf`,
+    notes: req.notes || "",
+    date:
+      req.date ||
+      (req.created_at ? req.created_at.split("T")[0] : undefined) ||
+      new Date().toISOString().split("T")[0],
+  };
 }
 
 export function SysAdminLoginScreen({
@@ -167,132 +259,29 @@ export function SysAdminApp({
   currentUser: { name: string };
   onLogout: () => void;
 }) {
-  const [htxs, setHtxs] = useState([
-    {
-      id: "1",
-      name: "HTX Nông Nghiệp Xanh",
-      representative: "Nguyễn Văn A",
-      phone: "0901234567",
-      email: "contact@htxxanh.vn",
-      address: "Xã Tân Bình, Huyện Châu Thành, Tỉnh Đồng Tháp",
-      registrationDate: "2026-03-15",
-      status: "approved",
-      farmers: 45,
-      area: "120 ha",
-      activeLogs: 124,
-      documents: [
-        { name: "Giấy phép kinh doanh.pdf", type: "pdf", size: "2.4 MB" },
-        {
-          name: "Danh sách thành viên ban đầu.xlsx",
-          type: "excel",
-          size: "1.1 MB",
-        },
-      ],
-      zones: [
-        {
-          id: "z1",
-          name: "Vùng trồng Sầu riêng Ri6 - Mã: VN-DT-001",
-          area: "50 ha",
-          mapImage: "https://picsum.photos/seed/map1/800/400",
-          certificate: { name: "GCN_QSDD_VN-DT-001.pdf", size: "3.5 MB" },
-          polygon: [
-            [10.451, 105.631],
-            [10.455, 105.631],
-            [10.455, 105.636],
-            [10.451, 105.636],
-          ],
-        },
-        {
-          id: "z2",
-          name: "Vùng trồng Sầu riêng Thái - Mã: VN-DT-002",
-          area: "70 ha",
-          mapImage: "https://picsum.photos/seed/map2/800/400",
-          certificate: { name: "GCN_QSDD_VN-DT-002.pdf", size: "4.1 MB" },
-          polygon: [
-            [10.461, 105.641],
-            [10.466, 105.641],
-            [10.466, 105.648],
-            [10.461, 105.648],
-          ],
-        },
-      ],
-    },
-    {
-      id: "2",
-      name: "HTX Sầu Riêng Sạch",
-      representative: "Trần Thị B",
-      phone: "0987654321",
-      email: "sauriengsach@gmail.com",
-      address: "Xã Long Tiên, Huyện Cai Lậy, Tỉnh Tiền Giang",
-      registrationDate: "2026-03-28",
-      status: "pending",
-      farmers: 12,
-      area: "30 ha",
-      activeLogs: 0,
-      documents: [
-        { name: "Giấy phép kinh doanh.pdf", type: "pdf", size: "1.8 MB" },
-        { name: "Cam kết chất lượng.pdf", type: "pdf", size: "0.5 MB" },
-      ],
-      zones: [
-        {
-          id: "z3",
-          name: "Vùng trồng Sầu riêng - Mã: VN-TG-005",
-          area: "30 ha",
-          mapImage: "https://picsum.photos/seed/map3/800/400",
-          certificate: { name: "GCN_QSDD_VN-TG-005.pdf", size: "2.1 MB" },
-          polygon: [
-            [10.411, 106.121],
-            [10.414, 106.121],
-            [10.414, 106.125],
-            [10.411, 106.125],
-          ],
-        },
-      ],
-    },
-    {
-      id: "3",
-      name: "HTX Trái Cây Miền Tây",
-      representative: "Lê Văn C",
-      phone: "0912345678",
-      email: "mientayfruit@yahoo.com",
-      address: "Phường 7, TP. Bến Tre, Tỉnh Bến Tre",
-      registrationDate: "2026-02-10",
-      status: "approved",
-      farmers: 80,
-      area: "250 ha",
-      activeLogs: 342,
-      documents: [
-        { name: "Giấy phép kinh doanh.pdf", type: "pdf", size: "3.1 MB" },
-        { name: "Hồ sơ năng lực.pdf", type: "pdf", size: "5.2 MB" },
-      ],
-      zones: [],
-    },
-  ]);
+  const [htxs, setHtxs] = useState<any[]>([]);
 
-  const [vietgapReqs, setVietgapReqs] = useState([
-    {
-      id: "1",
-      htxName: "HTX Nông Nghiệp Xanh",
-      date: "2026-03-25",
-      status: "reviewing",
-      document: "HoSo_VietGAP_HTXXanh.pdf",
-      notes: "",
-    },
-    {
-      id: "2",
-      htxName: "HTX Trái Cây Miền Tây",
-      date: "2026-03-20",
-      status: "approved",
-      document: "HoSo_VietGAP_MienTay.pdf",
-      notes: "Đã cấp mã số vùng trồng",
-    },
-  ]);
+  const [vietgapReqs, setVietgapReqs] = useState<any[]>([]);
 
   useEffect(() => {
     const loadAdmins = async () => {
       try {
         const admins = await adminAPI.getAdmins();
         if (admins.length) {
+          // Load farmers to calculate farmer count per HTX
+          let farmerCountByAdmin: Record<string, number> = {};
+          try {
+            const farmers = await farmAPI.getFarmers();
+            farmerCountByAdmin = farmers.reduce((acc: Record<string, number>, farmer: any) => {
+              const adminId = String(farmer.admin);
+              acc[adminId] = (acc[adminId] || 0) + 1;
+              return acc;
+            }, {});
+          } catch (farmerError) {
+            console.warn("Cannot load farmers, using 0 count:", farmerError);
+            farmerCountByAdmin = {};
+          }
+
           const mapped = admins.map((admin: any) => ({
             id: String(admin.id),
             name: admin.name || admin.google_email || "HTX",
@@ -303,8 +292,8 @@ export function SysAdminApp({
             registrationDate: admin.created_at
               ? admin.created_at.slice(0, 10)
               : "",
-            status: "approved",
-            farmers: 0,
+            status: admin.status || "pending",
+            farmers: farmerCountByAdmin[String(admin.id)] || 0,
             area: "0 ha",
             activeLogs: 0,
             documents: [],
@@ -316,7 +305,22 @@ export function SysAdminApp({
         console.warn("Cannot load HTX admin list from backend:", error);
       }
     };
+
+    const loadVietGAPRequests = async () => {
+      try {
+        const requests = await farmAPI.getVietGAPRegistrations();
+        if (Array.isArray(requests)) {
+          setVietgapReqs(
+            requests.map((req: any) => normalizeVietGAPRequest(req, [])),
+          );
+        }
+      } catch (error) {
+        console.warn("Cannot load VietGAP registrations from backend:", error);
+      }
+    };
+
     loadAdmins();
+    loadVietGAPRequests();
   }, []);
 
   return (
@@ -361,7 +365,14 @@ export function SysAdminDashboardScreen({
   setHtxs,
   vietgapReqs,
   setVietgapReqs,
-}: any) {
+}: {
+  currentUser: { name: string };
+  onLogout: () => void;
+  htxs: HTX[];
+  setHtxs: (htxs: HTX[]) => void;
+  vietgapReqs: VietgapReq[];
+  setVietgapReqs: (reqs: VietgapReq[]) => void;
+}) {
   const [activeTab, setActiveTab] = useState<"htx" | "vietgap" | "settings">(
     "htx",
   );
@@ -370,23 +381,48 @@ export function SysAdminDashboardScreen({
   const [viewingHtx, setViewingHtx] = useState<any>(null);
   const [editingVietgap, setEditingVietgap] = useState<any>(null);
 
-  const handleApproveHtx = (id: string) => {
-    setHtxs(htxs.map((h) => (h.id === id ? { ...h, status: "approved" } : h)));
+  const handleApproveHtx = async (id: string) => {
+    try {
+      await adminAPI.updateAdmin(parseInt(id), { status: "approved" });
+      setHtxs(htxs.map((h: HTX) => (h.id === id ? { ...h, status: "approved" } : h)));
+      alert("HTX đã được phê duyệt thành công");
+    } catch (error: any) {
+      console.error("Lỗi khi phê duyệt HTX:", error);
+      alert("Phê duyệt thất bại. Vui lòng thử lại.");
+    }
   };
 
-  const handleRejectHtx = (id: string) => {
-    setHtxs(htxs.map((h) => (h.id === id ? { ...h, status: "rejected" } : h)));
+  const handleRejectHtx = async (id: string) => {
+    try {
+      await adminAPI.updateAdmin(parseInt(id), { status: "rejected" });
+      setHtxs(htxs.map((h: HTX) => (h.id === id ? { ...h, status: "rejected" } : h)));
+      alert("HTX đã bị từ chối");
+    } catch (error: any) {
+      console.error("Lỗi khi từ chối HTX:", error);
+      alert("Từ chối thất bại. Vui lòng thử lại.");
+    }
   };
 
-  const handleUpdateVietgap = (e: React.FormEvent) => {
+  const handleUpdateVietgap = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingVietgap) return;
-    setVietgapReqs(
-      vietgapReqs.map((r: any) =>
-        r.id === editingVietgap.id ? editingVietgap : r,
-      ),
-    );
-    setEditingVietgap(null);
+
+    try {
+      await farmAPI.updateVietGAPRegistration(editingVietgap.id, {
+        status: editingVietgap.status,
+        notes: editingVietgap.notes,
+      });
+
+      setVietgapReqs(
+        vietgapReqs.map((r: any) =>
+          r.id === editingVietgap.id ? editingVietgap : r,
+        ),
+      );
+      setEditingVietgap(null);
+    } catch (error: any) {
+      console.error("Cannot update VietGAP registration:", error);
+      alert(error?.message || "Cập nhật hồ sơ thất bại. Vui lòng thử lại.");
+    }
   };
 
   return (
@@ -399,7 +435,9 @@ export function SysAdminDashboardScreen({
         <div className="flex items-center gap-4">
           <div className="text-sm text-slate-300 hidden sm:block">
             Xin chào,{" "}
-            <span className="font-bold text-white">{currentUser.name}</span>
+            <span className="font-bold text-white">
+              {currentUser?.name || "Quản trị viên"}
+            </span>
           </div>
           <button
             onClick={onLogout}
@@ -472,7 +510,7 @@ export function SysAdminDashboardScreen({
                   </tr>
                 </thead>
                 <tbody>
-                  {htxs.map((htx) => (
+                  {htxs.map((htx: HTX) => (
                     <tr
                       key={htx.id}
                       className="border-b border-gray-50 hover:bg-gray-50 transition-colors"
@@ -585,7 +623,7 @@ export function SysAdminDashboardScreen({
                   </tr>
                 </thead>
                 <tbody>
-                  {vietgapReqs.map((req) => (
+                  {vietgapReqs.map((req: VietgapReq) => (
                     <tr
                       key={req.id}
                       className="border-b border-gray-50 hover:bg-gray-50 transition-colors"
@@ -964,21 +1002,78 @@ export function SysAdminVietGAPCreateScreen({
   const navigate = useNavigate();
   const [selectedHtx, setSelectedHtx] = useState("");
   const [regType, setRegType] = useState("vietgap");
+  const [cropType, setCropType] = useState("");
+  const [productionQuantity, setProductionQuantity] = useState("");
+  const [plantingZone, setPlantingZone] = useState("");
+  const [plantingZones, setPlantingZones] = useState<any[]>([]);
+  const [loadingZones, setLoadingZones] = useState(false);
 
-  const handleSave = (e: React.FormEvent) => {
+  useEffect(() => {
+    const loadPlantingZones = async () => {
+      if (!selectedHtx) {
+        setPlantingZones([]);
+        return;
+      }
+
+      setLoadingZones(true);
+      try {
+        const zones = await farmAPI.getPlantingZones();
+        // Filter zones by selected admin/HTX
+        const filteredZones = zones.filter((zone: any) => {
+          const zoneAdminId = typeof zone.admin === 'object' ? zone.admin.id : zone.admin;
+          return String(zoneAdminId) === String(selectedHtx);
+        });
+        setPlantingZones(filteredZones);
+        setPlantingZone(""); // Reset selected zone
+      } catch (error) {
+        console.warn("Cannot load planting zones:", error);
+        setPlantingZones([]);
+      } finally {
+        setLoadingZones(false);
+      }
+    };
+
+    loadPlantingZones();
+  }, [selectedHtx]);
+
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     const htx = htxs.find((h: any) => h.id === selectedHtx);
-    if (htx) {
-      const newReq = {
-        id: Date.now().toString(),
-        htxName: htx.name,
-        date: new Date().toISOString().split("T")[0],
-        status: "reviewing",
-        document: `HoSo_${regType.toUpperCase()}_${htx.name.replace(/\s+/g, "")}.pdf`,
+    if (!htx) {
+      alert("Vui lòng chọn Hợp tác xã trước khi tạo hồ sơ.");
+      return;
+    }
+
+    try {
+      const documentName = `HoSo_${regType.toUpperCase()}_${htx.name.replace(/\s+/g, "")}.pdf`;
+      const created = await farmAPI.createVietGAPRegistration({
+        admin: selectedHtx,
+        registration_type: regType,
+        crop_type: cropType,
+        production_quantity: productionQuantity,
+        planting_zone: plantingZone,
+        region_code: "",
+        status: "pending",
+        document_files: [documentName],
         notes: "Hồ sơ mới tạo",
-      };
+      });
+
+      const newReq = normalizeVietGAPRequest(
+        {
+          ...created,
+          admin: selectedHtx,
+          htxName: htx.name,
+          document: documentName,
+          document_files: [documentName],
+        },
+        htxs,
+      );
+
       setVietgapReqs([newReq, ...vietgapReqs]);
       navigate("/sysadmin");
+    } catch (error: any) {
+      console.error("Cannot create VietGAP registration:", error);
+      alert(error?.message || "Tạo hồ sơ thất bại. Vui lòng thử lại.");
     }
   };
 
@@ -1120,6 +1215,8 @@ export function SysAdminVietGAPCreateScreen({
                 <input
                   type="text"
                   required
+                  value={cropType}
+                  onChange={(e) => setCropType(e.target.value)}
                   placeholder="VD: Sầu riêng, Thanh long..."
                   className="w-full rounded-xl border-gray-300 border p-3 focus:ring-blue-500 focus:border-blue-500"
                 />
@@ -1129,8 +1226,10 @@ export function SysAdminVietGAPCreateScreen({
                   Sản lượng dự kiến (tấn/năm) *
                 </label>
                 <input
-                  type="number"
+                  type="text"
                   required
+                  value={productionQuantity}
+                  onChange={(e) => setProductionQuantity(e.target.value)}
                   placeholder="VD: 500"
                   className="w-full rounded-xl border-gray-300 border p-3 focus:ring-blue-500 focus:border-blue-500"
                 />
@@ -1141,31 +1240,39 @@ export function SysAdminVietGAPCreateScreen({
                 </label>
                 <div className="border border-gray-200 rounded-xl p-4 bg-gray-50">
                   {selectedHtx ? (
-                    <div className="space-y-2">
-                      {htxs
-                        .find((h: any) => h.id === selectedHtx)
-                        ?.zones?.map((zone: any) => (
+                    loadingZones ? (
+                      <p className="text-sm text-gray-500 italic text-center py-2">
+                        Đang tải dữ liệu vùng trồng...
+                      </p>
+                    ) : plantingZones.length > 0 ? (
+                      <div className="space-y-2">
+                        {plantingZones.map((zone: any) => (
                           <label
                             key={zone.id}
                             className="flex items-center gap-3 p-2 hover:bg-white rounded-lg cursor-pointer transition-colors"
                           >
                             <input
-                              type="checkbox"
-                              className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
+                              type="radio"
+                              name="plantingZone"
+                              value={zone.name}
+                              checked={plantingZone === zone.name}
+                              onChange={(e) => setPlantingZone(e.target.value)}
+                              className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
                             />
                             <span className="font-medium text-gray-700">
                               {zone.name}
                             </span>
                             <span className="text-sm text-gray-500">
-                              ({zone.area})
+                              ({zone.crop_type})
                             </span>
                           </label>
-                        )) || (
-                        <p className="text-sm text-gray-500 italic">
-                          HTX này chưa có dữ liệu vùng trồng.
-                        </p>
-                      )}
-                    </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-gray-500 italic">
+                        HTX này chưa có dữ liệu vùng trồng.
+                      </p>
+                    )
                   ) : (
                     <p className="text-sm text-gray-500 italic text-center py-2">
                       Vui lòng chọn Hợp tác xã trước
@@ -1204,10 +1311,52 @@ export function SysAdminVietGAPCreateScreen({
   );
 }
 
-export function SysAdminHTXDetailScreen({ htxs, setHtxs }: any) {
+export function SysAdminHTXDetailScreen({ htxs, setHtxs }: { htxs: HTX[]; setHtxs: (htxs: HTX[]) => void }) {
   const { id } = useParams();
   const navigate = useNavigate();
-  const htx = htxs.find((h: any) => h.id === id);
+  const htx = htxs.find((h: HTX) => h.id === id);
+  const [farmers, setFarmers] = useState<any[]>([]);
+  const [loadingFarmers, setLoadingFarmers] = useState(false);
+  const [zones, setZones] = useState<any[]>([]);
+  const [loadingZones, setLoadingZones] = useState(false);
+
+  useEffect(() => {
+    const loadFarmers = async () => {
+      if (!htx || !id) return;
+      setLoadingFarmers(true);
+      try {
+        const farmersData = await farmAPI.getFarmersByAdminId(id);
+        setFarmers(farmersData);
+      } catch (error) {
+        console.warn("Cannot load farmers for HTX:", error);
+        setFarmers([]);
+      } finally {
+        setLoadingFarmers(false);
+      }
+    };
+
+    const loadPlantingZones = async () => {
+      if (!id) return;
+      setLoadingZones(true);
+      try {
+        const allZones = await farmAPI.getPlantingZones();
+        // Filter zones by admin_id
+        const filteredZones = allZones.filter((zone: any) => {
+          const zoneAdminId = typeof zone.admin === 'object' ? zone.admin.id : zone.admin;
+          return String(zoneAdminId) === String(id);
+        });
+        setZones(filteredZones);
+      } catch (error) {
+        console.warn("Cannot load planting zones for HTX:", error);
+        setZones([]);
+      } finally {
+        setLoadingZones(false);
+      }
+    };
+
+    loadFarmers();
+    loadPlantingZones();
+  }, [htx, id]);
 
   if (!htx) {
     return (
@@ -1348,6 +1497,53 @@ export function SysAdminHTXDetailScreen({ htxs, setHtxs }: any) {
               </div>
             )}
 
+            {/* Farmers List Section */}
+            {htx.status === "approved" && (
+              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+                <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2">
+                  <Users size={18} className="text-purple-600" /> Danh sách nông dân
+                </h3>
+                {loadingFarmers ? (
+                  <div className="text-center py-4">
+                    <div className="inline-block animate-spin rounded-full h-6 w-6 border-b-2 border-purple-600"></div>
+                    <p className="text-sm text-gray-500 mt-2">Đang tải...</p>
+                  </div>
+                ) : farmers.length > 0 ? (
+                  <div className="space-y-3">
+                    {farmers.map((farmer: any) => (
+                      <div
+                        key={farmer.id}
+                        className="flex items-center justify-between p-3 bg-gray-50 border border-gray-100 rounded-xl"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 bg-purple-100 rounded-full flex items-center justify-center">
+                            <Users size={16} className="text-purple-600" />
+                          </div>
+                          <div>
+                            <p className="text-sm font-medium text-gray-800">
+                              {farmer.full_name || farmer.google_email || "Nông dân"}
+                            </p>
+                            <p className="text-xs text-gray-500">
+                              {farmer.phone || "Chưa có SĐT"} • {farmer.managed_lot || "Chưa có lô"}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700">
+                            <CheckCircle size={12} /> Hoạt động
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-gray-500 text-center py-4">
+                    Chưa có nông dân nào đăng ký
+                  </p>
+                )}
+              </div>
+            )}
+
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
               <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2">
                 <FileText size={18} className="text-slate-600" /> Tài liệu đăng
@@ -1398,70 +1594,85 @@ export function SysAdminHTXDetailScreen({ htxs, setHtxs }: any) {
               </h3>
 
               <div className="space-y-8">
-                {htx.zones?.map((zone: any) => (
-                  <div
-                    key={zone.id}
-                    className="border border-gray-200 rounded-2xl overflow-hidden"
-                  >
-                    <div className="bg-gray-50 p-4 border-b border-gray-200 flex justify-between items-center">
-                      <div>
-                        <h4 className="font-bold text-gray-800">{zone.name}</h4>
-                        <p className="text-sm text-gray-500">
-                          Diện tích: {zone.area}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="p-4">
-                      <div className="mb-4">
-                        <p className="text-sm font-medium text-gray-700 mb-2">
-                          Bản đồ mô phỏng vùng trồng:
-                        </p>
-                        <div className="rounded-xl overflow-hidden border border-gray-200 bg-gray-100 aspect-video relative">
-                          <img
-                            src={zone.mapImage}
-                            alt={`Bản đồ ${zone.name}`}
-                            className="w-full h-full object-cover"
-                            referrerPolicy="no-referrer"
-                          />
-                        </div>
-                      </div>
-                      <div>
-                        <p className="text-sm font-medium text-gray-700 mb-2">
-                          Giấy chứng nhận QSDĐ:
-                        </p>
-                        <div className="flex items-center justify-between p-3 bg-blue-50 border border-blue-100 rounded-xl">
-                          <div className="flex items-center gap-3">
-                            <div className="p-2 bg-blue-100 text-blue-600 rounded-lg">
-                              <FileCheck size={16} />
-                            </div>
-                            <div>
-                              <p className="text-sm font-medium text-blue-900">
-                                {zone.certificate.name}
-                              </p>
-                              <p className="text-xs text-blue-600">
-                                {zone.certificate.size}
-                              </p>
-                            </div>
-                          </div>
-                          <button
-                            className="p-2 text-blue-700 hover:bg-blue-100 rounded-lg transition-colors"
-                            title="Xem chi tiết"
-                          >
-                            <Eye size={16} />
-                          </button>
-                        </div>
-                      </div>
-                    </div>
+                {loadingZones ? (
+                  <div className="text-center py-12">
+                    <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-600"></div>
+                    <p className="text-sm text-gray-500 mt-3">Đang tải dữ liệu vùng trồng...</p>
                   </div>
-                ))}
-                {(!htx.zones || htx.zones.length === 0) && (
+                ) : zones.length > 0 ? (
+                  zones.map((zone: any) => (
+                    <div
+                      key={zone.id}
+                      className="border border-gray-200 rounded-2xl overflow-hidden"
+                    >
+                      <div className="bg-gray-50 p-4 border-b border-gray-200 flex justify-between items-center">
+                        <div>
+                          <h4 className="font-bold text-gray-800">{zone.name}</h4>
+                          <p className="text-sm text-gray-500">
+                            Cây trồng: {zone.crop_type}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="p-4">
+                        <div className="mb-4">
+                          <p className="text-sm font-medium text-gray-700 mb-2">
+                            Các lô quản lý:
+                          </p>
+                          {zone.lots && zone.lots.length > 0 ? (
+                            <div className="grid grid-cols-1 gap-2">
+                              {zone.lots.map((lot: any, idx: number) => (
+                                <div key={idx} className="p-2 bg-gray-50 rounded-lg border border-gray-100">
+                                  <p className="text-sm text-gray-700">
+                                    {typeof lot === 'string' ? lot : lot.name || `Lô ${idx + 1}`}
+                                  </p>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="text-sm text-gray-500 italic">Chưa có lô nào</p>
+                          )}
+                        </div>
+                        {zone.certificate_files && zone.certificate_files.length > 0 && (
+                          <div>
+                            <p className="text-sm font-medium text-gray-700 mb-2">
+                              Giấy chứng nhận QSDĐ:
+                            </p>
+                            {zone.certificate_files.map((file: string, idx: number) => (
+                              <div key={idx} className="flex items-center justify-between p-3 bg-blue-50 border border-blue-100 rounded-xl mb-2">
+                                <div className="flex items-center gap-3">
+                                  <div className="p-2 bg-blue-100 text-blue-600 rounded-lg">
+                                    <FileCheck size={16} />
+                                  </div>
+                                  <div>
+                                    <p className="text-sm font-medium text-blue-900">
+                                      {file.split('/').pop()}
+                                    </p>
+                                  </div>
+                                </div>
+                                <a
+                                  href={file}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="p-2 text-blue-700 hover:bg-blue-100 rounded-lg transition-colors"
+                                  title="Xem file"
+                                >
+                                  <Download size={16} />
+                                </a>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))
+                ) : (
                   <div className="text-center py-12 border-2 border-dashed border-gray-200 rounded-2xl">
                     <MapIcon size={48} className="mx-auto text-gray-300 mb-3" />
                     <p className="text-gray-500 font-medium">
                       Chưa có dữ liệu vùng trồng
                     </p>
                     <p className="text-sm text-gray-400 mt-1">
-                      Hợp tác xã chưa cập nhật bản đồ và giấy chứng nhận.
+                      Hợp tác xã chưa cập nhật thông tin vùng trồng.
                     </p>
                   </div>
                 )}
@@ -1482,57 +1693,50 @@ export function SysAdminMaterialsScreen() {
   const [searchQuery, setSearchQuery] = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<any>(null);
+  const [materials, setMaterials] = useState<any[]>([]);
+  const [isLoadingMaterials, setIsLoadingMaterials] = useState(false);
+  const [materialsError, setMaterialsError] = useState("");
 
-  const [materials, setMaterials] = useState([
-    {
-      id: "1",
-      type: "fertilizer",
-      name: "Phân bón hữu cơ vi sinh Đầu Trâu",
-      activeIngredient: "Hữu cơ 15%, Vi sinh vật",
-      target: "Cải tạo đất, cung cấp dinh dưỡng",
-      status: "active",
-    },
-    {
-      id: "2",
-      type: "fertilizer",
-      name: "Phân bón lá NPK 20-20-20",
-      activeIngredient: "N: 20%, P2O5: 20%, K2O: 20%",
-      target: "Kích thích ra hoa, đậu trái",
-      status: "active",
-    },
-    {
-      id: "3",
-      type: "fertilizer",
-      name: "Phân lân nung chảy Văn Điển",
-      activeIngredient: "P2O5: 15-17%, Ca, Mg, Si",
-      target: "Bón lót, hạ phèn",
-      status: "inactive",
-    },
-    {
-      id: "4",
-      type: "pesticide",
-      name: "Thuốc trừ sâu sinh học Radiant 60SC",
-      activeIngredient: "Spinetoram 60g/L",
-      target: "Bọ trĩ, sâu tơ, sâu xanh",
-      status: "active",
-    },
-    {
-      id: "5",
-      type: "pesticide",
-      name: "Thuốc trừ bệnh Anvil 5SC",
-      activeIngredient: "Hexaconazole 50g/L",
-      target: "Nấm hồng, rỉ sắt, đốm lá",
-      status: "active",
-    },
-    {
-      id: "6",
-      type: "pesticide",
-      name: "Thuốc trừ cỏ Glyphosate (Cấm)",
-      activeIngredient: "Glyphosate",
-      target: "Cỏ dại",
-      status: "banned",
-    },
-  ]);
+  const mapBackendMaterialTypeToUi = (type: string) => {
+    if (type === "Phân bón") return "fertilizer";
+    if (type === "Thuốc BVTV") return "pesticide";
+    return "fertilizer";
+  };
+
+  const mapUiMaterialTypeToBackend = (type: string) => {
+    if (type === "fertilizer") return "Phân bón";
+    if (type === "pesticide") return "Thuốc BVTV";
+    return "Khác";
+  };
+
+  const mapApiMaterialToUi = (material: any) => ({
+    id: `mat-${material.id}`,
+    backendId: material.id,
+    type: mapBackendMaterialTypeToUi(material.type),
+    name: material.name || "",
+    activeIngredient: material.active_ingredient || "",
+    target: material.unit || "",
+    status: material.status || (material.is_vietgap ? "active" : "banned"),
+    quantity: material.quantity ?? 0,
+    min_stock: material.min_stock ?? 0,
+  });
+
+  useEffect(() => {
+    const loadMaterials = async () => {
+      setIsLoadingMaterials(true);
+      setMaterialsError("");
+      try {
+        const apiMaterials = await farmAPI.getMaterials();
+        setMaterials(apiMaterials.map(mapApiMaterialToUi));
+      } catch (error) {
+        console.error("Cannot load materials:", error);
+        setMaterialsError("Không thể tải danh mục vật tư từ server.");
+      } finally {
+        setIsLoadingMaterials(false);
+      }
+    };
+    loadMaterials();
+  }, []);
 
   const filteredMaterials = materials.filter(
     (m) =>
@@ -1541,25 +1745,62 @@ export function SysAdminMaterialsScreen() {
         m.activeIngredient.toLowerCase().includes(searchQuery.toLowerCase())),
   );
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (editingItem.id) {
-      setMaterials(
-        materials.map((m) => (m.id === editingItem.id ? editingItem : m)),
-      );
-    } else {
-      setMaterials([
-        ...materials,
-        { ...editingItem, id: Date.now().toString(), type: activeTab },
-      ]);
+    if (!editingItem) return;
+
+    const payload = {
+      name: editingItem.name,
+      type: mapUiMaterialTypeToBackend(editingItem.type),
+      active_ingredient: editingItem.activeIngredient,
+      is_vietgap: editingItem.status === "active", // vẫn giữ để không ảnh hưởng BE cũ
+      status: editingItem.status, // Gửi đúng status: 'active', 'inactive', 'banned'
+      unit: editingItem.target || "kg",
+      quantity: Number(editingItem.quantity ?? 0),
+      min_stock: Number(editingItem.min_stock ?? 0),
+    };
+
+    try {
+      if (editingItem.backendId) {
+        const updated = await farmAPI.updateMaterial(
+          editingItem.backendId,
+          payload,
+        );
+        setMaterials(
+          materials.map((m) =>
+            m.backendId === editingItem.backendId
+              ? mapApiMaterialToUi(updated)
+              : m,
+          ),
+        );
+      } else {
+        const created = await farmAPI.createMaterial(payload);
+        setMaterials([mapApiMaterialToUi(created), ...materials]);
+      }
+      setIsModalOpen(false);
+      setEditingItem(null);
+    } catch (error) {
+      console.error("Cannot save material:", error);
+      window.alert("Lưu vật tư thất bại. Vui lòng thử lại.");
     }
-    setIsModalOpen(false);
-    setEditingItem(null);
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
+    const item = materials.find((m) => m.id === id);
+    if (!item) return;
+
     if (window.confirm("Bạn có chắc chắn muốn xóa vật tư này?")) {
-      setMaterials(materials.filter((m) => m.id !== id));
+      if (item.backendId) {
+        try {
+          await farmAPI.deleteMaterial(item.backendId);
+          setMaterials(materials.filter((m) => m.id !== id));
+        } catch (error) {
+          console.error("Cannot delete material:", error);
+          window.alert("Xóa vật tư thất bại. Vui lòng thử lại.");
+        }
+      } else {
+        setMaterials(materials.filter((m) => m.id !== id));
+      }
     }
   };
 
@@ -1569,6 +1810,9 @@ export function SysAdminMaterialsScreen() {
       activeIngredient: "",
       target: "",
       status: "active",
+      type: activeTab,
+      quantity: 0,
+      min_stock: 0,
     });
     setIsModalOpen(true);
   };

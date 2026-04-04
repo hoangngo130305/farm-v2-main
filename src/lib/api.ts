@@ -142,9 +142,9 @@ export const refreshAccessToken = async (): Promise<string | null> => {
 // HEADERS
 // ============================================================
 
-export const getAuthHeaders = async (): Promise<HeadersInit> => {
+export const getAuthHeaders = async (): Promise<Record<string, string>> => {
   let token = getToken();
-  const headers: HeadersInit = {
+  const headers: Record<string, string> = {
     "Content-Type": "application/json",
   };
 
@@ -192,9 +192,14 @@ export const apiCall = async <T = any>(
     ? endpoint
     : `${API_BASE_URL}${endpoint}`;
 
-  const headers: HeadersInit = requireAuth
+  const isFormData = fetchOptions.body instanceof FormData;
+  const headers: Record<string, string> = requireAuth
     ? await getAuthHeaders()
-    : { "Content-Type": "application/json" };
+    : {};
+
+  if (!isFormData) {
+    headers["Content-Type"] = "application/json";
+  }
 
   if (VERBOSE_API_LOGS) {
     console.log(`📡 [API CALL] ${fetchOptions.method || "GET"} ${endpoint}`);
@@ -343,7 +348,7 @@ export const autoLogin = async (): Promise<boolean> => {
     if (!response.ok) {
       console.error("❌ [AUTO-LOGIN] Failed:", response.statusText);
       console.error(
-        "❌ [AUTO-LOGIN] Check if Django server is running on http://14.224.210.210:8008/",
+        "❌ [AUTO-LOGIN] Check if Django server is running on http://14.224.210.210:8009/",
       );
       console.error("❌ [AUTO-LOGIN] Check if you created admin user");
       console.error("❌ [AUTO-LOGIN] Run: python manage.py createsuperuser");
@@ -2135,16 +2140,35 @@ export const systemSettingAPI = {
 // FARM MANAGEMENT API
 
 export const farmAPI = {
-  getFarmers: async (): Promise<any[]> => {
-    const response = await apiCall<any>(API_ENDPOINTS.FARMERS, {
+  getFarmers: async (adminId?: string | number): Promise<any[]> => {
+    let endpoint = API_ENDPOINTS.FARMERS;
+    if (adminId) {
+      endpoint += `?admin_id=${adminId}`;
+    }
+    const response = await apiCall<any>(endpoint, {
       requireAuth: false,
       method: "GET",
     });
     return unwrapListResponse<any>(response);
   },
 
-  getPlantingZones: async (): Promise<any[]> => {
-    const response = await apiCall<any>(API_ENDPOINTS.PLANTING_ZONES, {
+  getFarmersByAdminId: async (adminId: number | string): Promise<any[]> => {
+    const response = await apiCall<any>(
+      `${API_ENDPOINTS.FARMERS}?admin_id=${adminId}`,
+      {
+        requireAuth: false,
+        method: "GET",
+      },
+    );
+    return unwrapListResponse<any>(response);
+  },
+
+  getPlantingZones: async (adminId?: string | number): Promise<any[]> => {
+    let endpoint = API_ENDPOINTS.PLANTING_ZONES;
+    if (adminId) {
+      endpoint += `?admin=${adminId}`;
+    }
+    const response = await apiCall<any>(endpoint, {
       requireAuth: false,
       method: "GET",
     });
@@ -2155,7 +2179,7 @@ export const farmAPI = {
     return apiCall<any>(API_ENDPOINTS.PLANTING_ZONES, {
       requireAuth: false,
       method: "POST",
-      body: JSON.stringify(data),
+      body: data instanceof FormData ? data : JSON.stringify(data),
     });
   },
 
@@ -2163,7 +2187,7 @@ export const farmAPI = {
     return apiCall<any>(`${API_ENDPOINTS.PLANTING_ZONES}${id}/`, {
       requireAuth: false,
       method: "PATCH",
-      body: JSON.stringify(data),
+      body: data instanceof FormData ? data : JSON.stringify(data),
     });
   },
 
@@ -2190,8 +2214,12 @@ export const farmAPI = {
     return unwrapListResponse<any>(response);
   },
 
-  getMaterials: async (): Promise<any[]> => {
-    const response = await apiCall<any>(API_ENDPOINTS.MATERIALS, {
+  getMaterials: async (adminId?: string | number): Promise<any[]> => {
+    let endpoint = API_ENDPOINTS.MATERIALS;
+    if (adminId) {
+      endpoint += `?admin_id=${adminId}`;
+    }
+    const response = await apiCall<any>(endpoint, {
       requireAuth: false,
       method: "GET",
     });
@@ -2221,16 +2249,31 @@ export const farmAPI = {
     });
   },
 
-  getTasks: async (): Promise<any[]> => {
-    const response = await apiCall<any>(API_ENDPOINTS.TASKS, {
+  getTasks: async (adminId?: string | number): Promise<any[]> => {
+    let endpoint = API_ENDPOINTS.TASKS;
+    if (adminId) {
+      endpoint += `?admin_id=${adminId}`;
+    }
+    const response = await apiCall<any>(endpoint, {
       requireAuth: false,
       method: "GET",
     });
     return unwrapListResponse<any>(response);
   },
 
-  getTaskCategories: async (): Promise<any[]> => {
-    const response = await apiCall<any>(API_ENDPOINTS.TASK_CATEGORIES, {
+  getTaskCategories: async (farmerId?: string | number, adminId?: string | number): Promise<any[]> => {
+    let endpoint = API_ENDPOINTS.TASK_CATEGORIES;
+    const params = [];
+    if (farmerId) {
+      params.push(`farmer_id=${farmerId}`);
+    }
+    if (adminId) {
+      params.push(`admin_id=${adminId}`);
+    }
+    if (params.length > 0) {
+      endpoint += `?${params.join('&')}`;
+    }
+    const response = await apiCall<any>(endpoint, {
       requireAuth: false,
       method: "GET",
     });
@@ -2276,8 +2319,19 @@ export const farmAPI = {
     });
   },
 
-  getFarmLogs: async (): Promise<any[]> => {
-    const response = await apiCall<any>(API_ENDPOINTS.FARM_LOGS, {
+  getFarmLogs: async (adminId?: string | number, farmerId?: string | number): Promise<any[]> => {
+    let endpoint = API_ENDPOINTS.FARM_LOGS;
+    const params = [];
+    if (adminId) {
+      params.push(`admin_id=${adminId}`);
+    }
+    if (farmerId) {
+      params.push(`farmer_id=${farmerId}`);
+    }
+    if (params.length > 0) {
+      endpoint += `?${params.join('&')}`;
+    }
+    const response = await apiCall<any>(endpoint, {
       requireAuth: false,
       method: "GET",
     });
@@ -2315,8 +2369,12 @@ export const farmAPI = {
     });
   },
 
-  getIncidentReports: async (): Promise<any[]> => {
-    const response = await apiCall<any>(API_ENDPOINTS.INCIDENT_REPORTS, {
+  getIncidentReports: async (adminId?: string | number): Promise<any[]> => {
+    let endpoint = API_ENDPOINTS.INCIDENT_REPORTS;
+    if (adminId) {
+      endpoint += `?admin_id=${adminId}`;
+    }
+    const response = await apiCall<any>(endpoint, {
       requireAuth: false,
       method: "GET",
     });
@@ -2328,6 +2386,64 @@ export const farmAPI = {
       method: "POST",
       body: JSON.stringify(data),
       requireAuth: false,
+    });
+  },
+
+  getFarms: async (): Promise<any[]> => {
+    const response = await apiCall<any>(`${API_BASE_URL}/farms/`, {
+      requireAuth: false,
+      method: "GET",
+    });
+    return unwrapListResponse<any>(response);
+  },
+
+  getFarmByAdmin: async (adminId: string | number): Promise<any> => {
+    return apiCall<any>(`${API_BASE_URL}/farms/by_admin/?admin_id=${adminId}`, {
+      requireAuth: false,
+      method: "GET",
+    });
+  },
+
+  updateFarm: async (id: string | number, data: any): Promise<any> => {
+    return apiCall<any>(`${API_BASE_URL}/farms/${id}/`, {
+      requireAuth: false,
+      method: "PATCH",
+      body: JSON.stringify(data),
+    });
+  },
+
+  createFarm: async (data: any): Promise<any> => {
+    return apiCall<any>(`${API_BASE_URL}/farms/`, {
+      requireAuth: false,
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+
+  getVietGAPRegistrations: async (): Promise<any[]> => {
+    const response = await apiCall<any>(API_ENDPOINTS.VIETGAP_REGISTRATIONS, {
+      requireAuth: false,
+      method: "GET",
+    });
+    return unwrapListResponse<any>(response);
+  },
+
+  createVietGAPRegistration: async (data: any): Promise<any> => {
+    return apiCall<any>(API_ENDPOINTS.VIETGAP_REGISTRATIONS, {
+      requireAuth: false,
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+
+  updateVietGAPRegistration: async (
+    id: number | string,
+    data: any,
+  ): Promise<any> => {
+    return apiCall<any>(`${API_ENDPOINTS.VIETGAP_REGISTRATIONS}${id}/`, {
+      requireAuth: false,
+      method: "PATCH",
+      body: JSON.stringify(data),
     });
   },
 };
