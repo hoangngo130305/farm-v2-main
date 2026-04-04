@@ -272,11 +272,14 @@ export function SysAdminApp({
           let farmerCountByAdmin: Record<string, number> = {};
           try {
             const farmers = await farmAPI.getFarmers();
-            farmerCountByAdmin = farmers.reduce((acc: Record<string, number>, farmer: any) => {
-              const adminId = String(farmer.admin);
-              acc[adminId] = (acc[adminId] || 0) + 1;
-              return acc;
-            }, {});
+            farmerCountByAdmin = farmers.reduce(
+              (acc: Record<string, number>, farmer: any) => {
+                const adminId = String(farmer.admin);
+                acc[adminId] = (acc[adminId] || 0) + 1;
+                return acc;
+              },
+              {},
+            );
           } catch (farmerError) {
             console.warn("Cannot load farmers, using 0 count:", farmerError);
             farmerCountByAdmin = {};
@@ -384,7 +387,9 @@ export function SysAdminDashboardScreen({
   const handleApproveHtx = async (id: string) => {
     try {
       await adminAPI.updateAdmin(parseInt(id), { status: "approved" });
-      setHtxs(htxs.map((h: HTX) => (h.id === id ? { ...h, status: "approved" } : h)));
+      setHtxs(
+        htxs.map((h: HTX) => (h.id === id ? { ...h, status: "approved" } : h)),
+      );
       alert("HTX đã được phê duyệt thành công");
     } catch (error: any) {
       console.error("Lỗi khi phê duyệt HTX:", error);
@@ -395,7 +400,9 @@ export function SysAdminDashboardScreen({
   const handleRejectHtx = async (id: string) => {
     try {
       await adminAPI.updateAdmin(parseInt(id), { status: "rejected" });
-      setHtxs(htxs.map((h: HTX) => (h.id === id ? { ...h, status: "rejected" } : h)));
+      setHtxs(
+        htxs.map((h: HTX) => (h.id === id ? { ...h, status: "rejected" } : h)),
+      );
       alert("HTX đã bị từ chối");
     } catch (error: any) {
       console.error("Lỗi khi từ chối HTX:", error);
@@ -1020,7 +1027,8 @@ export function SysAdminVietGAPCreateScreen({
         const zones = await farmAPI.getPlantingZones();
         // Filter zones by selected admin/HTX
         const filteredZones = zones.filter((zone: any) => {
-          const zoneAdminId = typeof zone.admin === 'object' ? zone.admin.id : zone.admin;
+          const zoneAdminId =
+            typeof zone.admin === "object" ? zone.admin.id : zone.admin;
           return String(zoneAdminId) === String(selectedHtx);
         });
         setPlantingZones(filteredZones);
@@ -1311,7 +1319,13 @@ export function SysAdminVietGAPCreateScreen({
   );
 }
 
-export function SysAdminHTXDetailScreen({ htxs, setHtxs }: { htxs: HTX[]; setHtxs: (htxs: HTX[]) => void }) {
+export function SysAdminHTXDetailScreen({
+  htxs,
+  setHtxs,
+}: {
+  htxs: HTX[];
+  setHtxs: (htxs: HTX[]) => void;
+}) {
   const { id } = useParams();
   const navigate = useNavigate();
   const htx = htxs.find((h: HTX) => h.id === id);
@@ -1342,7 +1356,8 @@ export function SysAdminHTXDetailScreen({ htxs, setHtxs }: { htxs: HTX[]; setHtx
         const allZones = await farmAPI.getPlantingZones();
         // Filter zones by admin_id
         const filteredZones = allZones.filter((zone: any) => {
-          const zoneAdminId = typeof zone.admin === 'object' ? zone.admin.id : zone.admin;
+          const zoneAdminId =
+            typeof zone.admin === "object" ? zone.admin.id : zone.admin;
           return String(zoneAdminId) === String(id);
         });
         setZones(filteredZones);
@@ -1501,7 +1516,8 @@ export function SysAdminHTXDetailScreen({ htxs, setHtxs }: { htxs: HTX[]; setHtx
             {htx.status === "approved" && (
               <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
                 <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2">
-                  <Users size={18} className="text-purple-600" /> Danh sách nông dân
+                  <Users size={18} className="text-purple-600" /> Danh sách nông
+                  dân
                 </h3>
                 {loadingFarmers ? (
                   <div className="text-center py-4">
@@ -1521,10 +1537,13 @@ export function SysAdminHTXDetailScreen({ htxs, setHtxs }: { htxs: HTX[]; setHtx
                           </div>
                           <div>
                             <p className="text-sm font-medium text-gray-800">
-                              {farmer.full_name || farmer.google_email || "Nông dân"}
+                              {farmer.full_name ||
+                                farmer.google_email ||
+                                "Nông dân"}
                             </p>
                             <p className="text-xs text-gray-500">
-                              {farmer.phone || "Chưa có SĐT"} • {farmer.managed_lot || "Chưa có lô"}
+                              {farmer.phone || "Chưa có SĐT"} •{" "}
+                              {farmer.managed_lot || "Chưa có lô"}
                             </p>
                           </div>
                         </div>
@@ -1597,7 +1616,9 @@ export function SysAdminHTXDetailScreen({ htxs, setHtxs }: { htxs: HTX[]; setHtx
                 {loadingZones ? (
                   <div className="text-center py-12">
                     <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-600"></div>
-                    <p className="text-sm text-gray-500 mt-3">Đang tải dữ liệu vùng trồng...</p>
+                    <p className="text-sm text-gray-500 mt-3">
+                      Đang tải dữ liệu vùng trồng...
+                    </p>
                   </div>
                 ) : zones.length > 0 ? (
                   zones.map((zone: any) => (
@@ -1607,7 +1628,9 @@ export function SysAdminHTXDetailScreen({ htxs, setHtxs }: { htxs: HTX[]; setHtx
                     >
                       <div className="bg-gray-50 p-4 border-b border-gray-200 flex justify-between items-center">
                         <div>
-                          <h4 className="font-bold text-gray-800">{zone.name}</h4>
+                          <h4 className="font-bold text-gray-800">
+                            {zone.name}
+                          </h4>
                           <p className="text-sm text-gray-500">
                             Cây trồng: {zone.crop_type}
                           </p>
@@ -1621,47 +1644,60 @@ export function SysAdminHTXDetailScreen({ htxs, setHtxs }: { htxs: HTX[]; setHtx
                           {zone.lots && zone.lots.length > 0 ? (
                             <div className="grid grid-cols-1 gap-2">
                               {zone.lots.map((lot: any, idx: number) => (
-                                <div key={idx} className="p-2 bg-gray-50 rounded-lg border border-gray-100">
+                                <div
+                                  key={idx}
+                                  className="p-2 bg-gray-50 rounded-lg border border-gray-100"
+                                >
                                   <p className="text-sm text-gray-700">
-                                    {typeof lot === 'string' ? lot : lot.name || `Lô ${idx + 1}`}
+                                    {typeof lot === "string"
+                                      ? lot
+                                      : lot.name || `Lô ${idx + 1}`}
                                   </p>
                                 </div>
                               ))}
                             </div>
                           ) : (
-                            <p className="text-sm text-gray-500 italic">Chưa có lô nào</p>
+                            <p className="text-sm text-gray-500 italic">
+                              Chưa có lô nào
+                            </p>
                           )}
                         </div>
-                        {zone.certificate_files && zone.certificate_files.length > 0 && (
-                          <div>
-                            <p className="text-sm font-medium text-gray-700 mb-2">
-                              Giấy chứng nhận QSDĐ:
-                            </p>
-                            {zone.certificate_files.map((file: string, idx: number) => (
-                              <div key={idx} className="flex items-center justify-between p-3 bg-blue-50 border border-blue-100 rounded-xl mb-2">
-                                <div className="flex items-center gap-3">
-                                  <div className="p-2 bg-blue-100 text-blue-600 rounded-lg">
-                                    <FileCheck size={16} />
+                        {zone.certificate_files &&
+                          zone.certificate_files.length > 0 && (
+                            <div>
+                              <p className="text-sm font-medium text-gray-700 mb-2">
+                                Giấy chứng nhận QSDĐ:
+                              </p>
+                              {zone.certificate_files.map(
+                                (file: string, idx: number) => (
+                                  <div
+                                    key={idx}
+                                    className="flex items-center justify-between p-3 bg-blue-50 border border-blue-100 rounded-xl mb-2"
+                                  >
+                                    <div className="flex items-center gap-3">
+                                      <div className="p-2 bg-blue-100 text-blue-600 rounded-lg">
+                                        <FileCheck size={16} />
+                                      </div>
+                                      <div>
+                                        <p className="text-sm font-medium text-blue-900">
+                                          {file.split("/").pop()}
+                                        </p>
+                                      </div>
+                                    </div>
+                                    <a
+                                      href={file}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="p-2 text-blue-700 hover:bg-blue-100 rounded-lg transition-colors"
+                                      title="Xem file"
+                                    >
+                                      <Download size={16} />
+                                    </a>
                                   </div>
-                                  <div>
-                                    <p className="text-sm font-medium text-blue-900">
-                                      {file.split('/').pop()}
-                                    </p>
-                                  </div>
-                                </div>
-                                <a
-                                  href={file}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="p-2 text-blue-700 hover:bg-blue-100 rounded-lg transition-colors"
-                                  title="Xem file"
-                                >
-                                  <Download size={16} />
-                                </a>
-                              </div>
-                            ))}
-                          </div>
-                        )}
+                                ),
+                              )}
+                            </div>
+                          )}
                       </div>
                     </div>
                   ))

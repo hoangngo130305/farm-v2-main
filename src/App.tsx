@@ -686,7 +686,7 @@ export default function App() {
           // Farmer: use their HTX's admin_id
           adminId = String(currentUser.admin_id);
         }
-        
+
         const apiTasks = await farmAPI.getTasks(adminId);
         if (Array.isArray(apiTasks)) {
           setTasksConfig(apiTasks.map(normalizeTaskConfig));
@@ -698,20 +698,23 @@ export default function App() {
       try {
         // Load task categories - filter by admin_id (HTX)
         let categoryLoader: Promise<any[]>;
-        
+
         if (currentUser?.role === "admin") {
           // Admin: filtered by their own admin_id
-          categoryLoader = farmAPI.getTaskCategories(undefined, String(currentUser.id));
+          categoryLoader = farmAPI.getTaskCategories(
+            undefined,
+            String(currentUser.id),
+          );
         } else if (currentUser?.admin_id && !currentUser?.role) {
           // Farmer: pass both farmer_id (access control) and admin_id (filtering)
           categoryLoader = farmAPI.getTaskCategories(
             String(currentUser.id),
-            String(currentUser.admin_id)
+            String(currentUser.admin_id),
           );
         } else {
           categoryLoader = Promise.resolve([]);
         }
-        
+
         const apiTaskCategories = await categoryLoader;
         if (Array.isArray(apiTaskCategories)) {
           setTaskCategories(
@@ -766,9 +769,12 @@ export default function App() {
           apiLogs = await farmAPI.getFarmLogs(String(currentUser.id));
         } else if (currentUser?.id && !currentUser?.role) {
           // Farmer: load their own logs
-          apiLogs = await farmAPI.getFarmLogs(undefined, String(currentUser.id));
+          apiLogs = await farmAPI.getFarmLogs(
+            undefined,
+            String(currentUser.id),
+          );
         }
-        
+
         if (Array.isArray(apiLogs)) {
           setLogs(
             apiLogs.length
@@ -6013,7 +6019,9 @@ function ProcessManagementScreen({
         alert("Cập nhật quy trình thành công!");
       } catch (error: any) {
         console.error("Không thể cập nhật công việc trong backend:", error);
-        alert(error?.message || "Cập nhật quy trình thất bại. Vui lòng thử lại.");
+        alert(
+          error?.message || "Cập nhật quy trình thất bại. Vui lòng thử lại.",
+        );
         setTasksConfig(
           tasksConfig.map((t) => (t.id === currentTask.id ? currentTask : t)),
         );

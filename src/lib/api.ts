@@ -2261,7 +2261,10 @@ export const farmAPI = {
     return unwrapListResponse<any>(response);
   },
 
-  getTaskCategories: async (farmerId?: string | number, adminId?: string | number): Promise<any[]> => {
+  getTaskCategories: async (
+    farmerId?: string | number,
+    adminId?: string | number,
+  ): Promise<any[]> => {
     let endpoint = API_ENDPOINTS.TASK_CATEGORIES;
     const params = [];
     if (farmerId) {
@@ -2271,7 +2274,7 @@ export const farmAPI = {
       params.push(`admin_id=${adminId}`);
     }
     if (params.length > 0) {
-      endpoint += `?${params.join('&')}`;
+      endpoint += `?${params.join("&")}`;
     }
     const response = await apiCall<any>(endpoint, {
       requireAuth: false,
@@ -2319,7 +2322,10 @@ export const farmAPI = {
     });
   },
 
-  getFarmLogs: async (adminId?: string | number, farmerId?: string | number): Promise<any[]> => {
+  getFarmLogs: async (
+    adminId?: string | number,
+    farmerId?: string | number,
+  ): Promise<any[]> => {
     let endpoint = API_ENDPOINTS.FARM_LOGS;
     const params = [];
     if (adminId) {
@@ -2329,7 +2335,7 @@ export const farmAPI = {
       params.push(`farmer_id=${farmerId}`);
     }
     if (params.length > 0) {
-      endpoint += `?${params.join('&')}`;
+      endpoint += `?${params.join("&")}`;
     }
     const response = await apiCall<any>(endpoint, {
       requireAuth: false,
