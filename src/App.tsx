@@ -466,14 +466,17 @@ function normalizeTaskConfig(task: any): TaskConfig {
 // ============================================================
 
 const CURRENT_USER_STORAGE_KEY = "currentUser_farm_management";
+const CURRENT_USER_ROLE_KEY = "currentUserRole_farm_management";
 
 const saveCurrentUserToStorage = (user: any) => {
   try {
     if (user) {
       localStorage.setItem(CURRENT_USER_STORAGE_KEY, JSON.stringify(user));
+      localStorage.setItem(CURRENT_USER_ROLE_KEY, user.role || "unknown");
       console.log("✅ [AUTH] Saved currentUser to localStorage:", user);
     } else {
       localStorage.removeItem(CURRENT_USER_STORAGE_KEY);
+      localStorage.removeItem(CURRENT_USER_ROLE_KEY);
       console.log("✅ [AUTH] Cleared currentUser from localStorage");
     }
   } catch (error) {
@@ -484,13 +487,27 @@ const saveCurrentUserToStorage = (user: any) => {
 const loadCurrentUserFromStorage = (): any => {
   try {
     const stored = localStorage.getItem(CURRENT_USER_STORAGE_KEY);
+    const storedRole = localStorage.getItem(CURRENT_USER_ROLE_KEY);
+    
     if (stored) {
       const user = JSON.parse(stored);
+      
+      // Validate that stored user matches stored role
+      if (user.role !== storedRole) {
+        console.warn("❌ [AUTH] User role mismatch - clearing corrupted user data");
+        localStorage.removeItem(CURRENT_USER_STORAGE_KEY);
+        localStorage.removeItem(CURRENT_USER_ROLE_KEY);
+        return null;
+      }
+      
       console.log("✅ [AUTH] Restored currentUser from localStorage:", user);
       return user;
     }
   } catch (error) {
     console.error("❌ [AUTH] Failed to load currentUser:", error);
+    // On error, clear corrupted data
+    localStorage.removeItem(CURRENT_USER_STORAGE_KEY);
+    localStorage.removeItem(CURRENT_USER_ROLE_KEY);
   }
   return null;
 };
@@ -596,21 +613,53 @@ export default function App() {
   const [lotOptions, setLotOptions] = useState<LotOption[]>([]);
 
   // ============================================================
-  // Effect: Protect /admin routes - redirect if not authenticated
+  // Effect: Prevent inappropriate role-route access
   // ============================================================
   useEffect(() => {
-    const isAdminRoute = location.pathname.startsWith("/admin");
-    const isAuthenticated = currentUser?.id && currentUser?.role === "admin";
-
-    if (isAdminRoute && !isAuthenticated) {
+    const currentPath = location.pathname;
+    
+    // If accessing /app (farmer route) but user is admin -> redirect to /admin
+    if (currentPath === "/app" && currentUser?.role === "admin") {
       console.warn(
-        "❌ [AUTH] Unauthenticated access to admin route, redirecting to login:",
-        location.pathname,
+        "❌ [AUTH] Admin user trying to access farmer route /app, redirecting to /admin"
       );
-      navigate("/htx_login", { replace: true });
+      navigate("/admin", { replace: true });
+      return;
     }
-  }, [location.pathname, currentUser?.id, currentUser?.role, navigate]);
+    
+    // If accessing /app (farmer route) but user is sysadmin -> redirect to /sysadmin
+    if (currentPath === "/app" && currentUser?.role === "sysadmin") {
+      console.warn(
+        "❌ [AUTH] SysAdmin user trying to access farmer route /app, redirecting to /sysadmin"
+      );
+      navigate("/sysadmin", { replace: true });
+      return;
+    }
+    
+    // If accessing /admin (admin route) but user is NOT admin -> redirect to /login
+    if (currentPath.startsWith("/admin") && currentUser?.role !== "admin") {
+      console.warn(
+        "❌ [AUTH] Unauthenticated or non-admin access to admin route, clearing session and redirecting to login:",
+        currentPath
+      );
+      setCurrentUser(null);
+      navigate("/login", { replace: true });
+      return;
+    }
+    
+    // If in /app but no currentUser -> redirect to /login
+    if (currentPath === "/app" && !currentUser) {
+      console.warn(
+        "❌ [AUTH] No currentUser on farmer route /app, redirecting to /login"
+      );
+      navigate("/login", { replace: true });
+      return;
+    }
+  }, [location.pathname, currentUser?.role, navigate, currentUser]);
 
+  // ============================================================
+  // Effect: Fetch initial data when currentUser changes
+  // ============================================================
   useEffect(() => {
     const fetchInitialData = async () => {
       try {
@@ -1150,6 +1199,7 @@ export default function App() {
                       tasksList={tasksList}
                       stageOptions={stageOptions}
                       lotOptions={lotOptions}
+                      previousLogs={logs}
                     />
                   ))}
                 {activeTab === "report" && currentUser && (
@@ -1547,6 +1597,7 @@ function AddLogForm({
   tasksList,
   stageOptions,
   lotOptions,
+  previousLogs = [],
 }: {
   initialData: TaskConfig | null;
   currentUser: { name: string; id?: string | number; managed_lot?: string };
@@ -1556,6 +1607,7 @@ function AddLogForm({
   tasksList: string[];
   stageOptions: StageOption[];
   lotOptions: LotOption[];
+  previousLogs?: FarmLog[];
 }) {
   // Filter lotOptions to show only the farmer's managed lot
   const farmerLotOptions = currentUser.managed_lot
@@ -1572,6 +1624,9 @@ function AddLogForm({
     initialData ? initialData.requiresMaterials : true,
   );
   const [isScanning, setIsScanning] = useState(false);
+  const [lastInitialDataId, setLastInitialDataId] = useState<string | null>(
+    initialData?.id || null
+  );
 
   const [formData, setFormData] = useState<Partial<FarmLog>>({
     executor: currentUser.name,
@@ -1592,14 +1647,32 @@ function AddLogForm({
     images: [],
   });
 
+  // Debug log to check initialData
+  useEffect(() => {
+    console.log("🔍 AddLogForm - initialData:", initialData);
+    console.log("🔍 FormData initial pest:", formData.pest);
+  }, []);
+
   useEffect(() => {
     if (!formData.stage && stageOptions.length > 0) {
       setFormData((prev) => ({ ...prev, stage: stageOptions[0].id }));
     }
   }, [stageOptions, formData.stage]);
 
-  // Reset form fields when task changes
+  // Reset form fields when task changes (but not when initialData changes)
   useEffect(() => {
+    console.log("⚡ Task change effect triggered");
+    console.log("  - currentTask:", formData.task);
+    console.log("  - lastInitialDataId:", lastInitialDataId);
+    console.log("  - initialData?.id:", initialData?.id);
+    
+    // Only reset if task changed AND initialData hasn't just changed
+    if (initialData?.id !== lastInitialDataId) {
+      console.log("⏭️ Skipping reset because initialData just changed");
+      return;
+    }
+    
+    console.log("🔄 Resetting form fields for task change (user interaction)");
     setFormData((prev) => ({
       ...prev,
       pest: "",
@@ -1623,6 +1696,77 @@ function AddLogForm({
       setFormData((prev) => ({ ...prev, lot: farmerLotOptions[0].id }));
     }
   }, [farmerLotOptions, formData.lot]);
+
+  // Auto-fill form fields from initialData (task config with default values)
+  useEffect(() => {
+    console.log("⚡ initialData effect triggered");
+    console.log("  - initialData?.id:", initialData?.id);
+    console.log("  - initialData?.defaultValues:", JSON.stringify(initialData?.defaultValues));
+    
+    if (initialData?.defaultValues) {
+      console.log("✅ Has defaultValues, marking initialData as processed");
+      
+      // Mark that we're processing this initialData ID
+      setLastInitialDataId(initialData.id);
+      
+      // ONLY set defaultValues fields, don't change task to prevent reset
+      setFormData((prev) => {
+        const newData = {
+          ...prev,
+          pest: initialData.defaultValues.pest || "",
+          method: initialData.defaultValues.method || "",
+          fertilizer: initialData.defaultValues.fertilizer || "",
+          activeIngredient: initialData.defaultValues.activeIngredient || "",
+          dosage: initialData.defaultValues.dosage || "",
+          quarantineTime: initialData.defaultValues.quarantineTime || "",
+          wasteType: initialData.defaultValues.wasteType || prev.wasteType,
+          task: initialData.defaultValues.task || prev.task,
+        };
+        console.log("✅ Updated formData fields:", {
+          task: newData.task,
+          pest: newData.pest,
+          method: newData.method,
+          fertilizer: newData.fertilizer,
+          activeIngredient: newData.activeIngredient,
+          dosage: newData.dosage,
+          quarantineTime: newData.quarantineTime,
+        });
+        return newData;
+      });
+    } else {
+      console.log("❌ No defaultValues in initialData");
+    }
+  }, [initialData?.id, initialData?.name]); // Trigger on both id and name changes
+
+  // Auto-fill form fields from the last log for the selected lot
+  useEffect(() => {
+    if (formData.lot && previousLogs && previousLogs.length > 0) {
+      // Find the most recent log for this lot
+      const lotsForSelectedLot = previousLogs.filter(
+        (log: any) => String(log.lot) === String(formData.lot)
+      );
+      
+      if (lotsForSelectedLot.length > 0) {
+        const lastLog = lotsForSelectedLot[0]; // Assuming logs are sorted by date, most recent first
+        
+        // Auto-fill fields from the last log
+        setFormData((prev) => ({
+          ...prev,
+          stage: lastLog.stage || prev.stage,
+          task: lastLog.task || prev.task,
+          pest: lastLog.pest || prev.pest,
+          method: lastLog.method || prev.method,
+          fertilizer: lastLog.fertilizer || prev.fertilizer,
+          activeIngredient: lastLog.activeIngredient || prev.activeIngredient,
+          dosage: lastLog.dosage || prev.dosage,
+          quarantineTime: lastLog.quarantineTime || prev.quarantineTime,
+          wasteType: lastLog.wasteType || prev.wasteType,
+          materialName: "",
+          materialQuantity: "",
+        }));
+      }
+    }
+  }, [formData.lot]);
 
   const handleScanMaterial = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0) return;
@@ -2690,7 +2834,7 @@ function SettingsScreen({
                                 <div className="h-72 w-full relative overflow-hidden">
                                   <MapContainerAny
                                     center={lotCoordinates[0] || [10.5, 107.4]}
-                                    zoom={18}
+                                    zoom={12}
                                     style={{
                                       height: "100%",
                                       width: "100%",
@@ -4930,7 +5074,7 @@ function DrawMapScreen({
       <div className="h-[400px] w-full rounded-xl overflow-hidden border border-gray-200 mb-4 relative">
         <MapContainerAny
           center={mapCenter}
-          zoom={16}
+          zoom={14}
           style={{ height: "100%", width: "100%" }}
         >
           <TileLayerAny
@@ -5156,7 +5300,7 @@ function LotDetailManagementScreen({
           <div className="h-[500px] w-full relative">
             <MapContainerAny
               center={mapCenter}
-              zoom={18}
+              zoom={14}
               style={{ height: "100%", width: "100%" }}
             >
               <TileLayerAny
@@ -5742,7 +5886,7 @@ function LandManagementScreen({
                 />
               </div>
               <button
-                onClick={() => setView("add_upload")}
+                onClick={() => setView("add_draw_map")}
                 disabled={!newZone.cropType || !newZone.name}
                 className="w-full bg-emerald-600 text-white py-3 rounded-xl font-medium hover:bg-emerald-700 transition-colors disabled:opacity-50 mt-4"
               >
@@ -5817,7 +5961,7 @@ function LandManagementScreen({
         {view === "add_draw_map" && (
           <DrawMapScreen
             onSave={handleDrawMapSave}
-            onCancel={() => setView("add_upload")}
+            onCancel={() => setView("add_info")}
           />
         )}
 

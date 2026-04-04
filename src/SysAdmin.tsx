@@ -855,23 +855,38 @@ export function SysAdminMapsScreen({ htxs }: any) {
         setAdminsMap(adminMap);
         
         // Enrich zones with admin info
-        const enrichedZones = (zones || []).map((zone: any) => ({
-          ...zone,
-          htxName: adminMap[String(zone.admin)] || "HTX không xác định",
-          htxId: zone.admin,
-          // Convert lots to polygon format for Leaflet
-          polygon: zone.lots && zone.lots.length > 0
-            ? zone.lots.flatMap((lot: any) => 
-                (lot.latLngs && lot.latLngs.length > 0) 
-                  ? lot.latLngs 
-                  : []
-              )
-            : [],
-          area: zone.lots && zone.lots.length > 0
-            ? `${(zone.lots.reduce((sum: number, lot: any) => sum + (lot.area || 0), 0)).toFixed(1)} ha`
-            : "0 ha",
-        }));
+        const enrichedZones = (zones || []).map((zone: any) => {
+          // Ensure lots array is present and has latLngs
+          const lotsWithCoords = (zone.lots || []).map((lot: any) => ({
+            ...lot,
+            latLngs: lot.latLngs || (lot.coordinates ? 
+              lot.coordinates.split(' ').map((coord: string) => 
+                coord.split(',').map((c: string) => parseFloat(c))
+              ) 
+              : []
+            )
+          }));
+          
+          return {
+            ...zone,
+            lots: lotsWithCoords,
+            htxName: adminMap[String(zone.admin)] || "HTX không xác định",
+            htxId: zone.admin,
+            // Convert lots to polygon format for Leaflet
+            polygon: lotsWithCoords && lotsWithCoords.length > 0
+              ? lotsWithCoords.flatMap((lot: any) => 
+                  (lot.latLngs && lot.latLngs.length > 0) 
+                    ? lot.latLngs 
+                    : []
+                )
+              : [],
+            area: lotsWithCoords && lotsWithCoords.length > 0
+              ? `${(lotsWithCoords.reduce((sum: number, lot: any) => sum + (lot.area || 0), 0)).toFixed(1)} ha`
+              : "0 ha",
+          };
+        });
         
+        console.log("Enriched zones:", enrichedZones);
         setAllZones(enrichedZones);
       } catch (error) {
         console.warn("Lỗi khi tải vùng trồng:", error);
@@ -1017,44 +1032,67 @@ export function SysAdminMapsScreen({ htxs }: any) {
                 attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
                 url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
               />
-              {filteredZones.map((zone: any, index: number) => {
-                if (!zone.polygon || zone.polygon.length === 0) return null;
-                return (
-                  <PolygonAny
-                    key={index}
-                    positions={zone.polygon}
-                    pathOptions={{
-                      color: "#059669",
-                      fillColor: "#10b981",
-                      fillOpacity: 0.4,
-                      weight: 2,
-                    }}
-                  >
-                    <Popup>
-                      <div className="p-3 min-w-[240px]">
-                        <h4 className="font-bold text-gray-800 mb-1">
-                          {zone.name}
-                        </h4>
-                        <div className="flex items-center gap-2 text-sm text-gray-600 mb-2">
-                          <Building size={14} />
-                          {zone.htxName}
+              {filteredZones.flatMap((zone: any, zoneIndex: number) => {
+                if (!zone.lots || zone.lots.length === 0) return null;
+                // Render từng lô riêng biệt trên bản đồ
+                return zone.lots.map((lot: any, lotIndex: number) => {
+                  if (!lot.latLngs || lot.latLngs.length === 0) return null;
+                  const lotKey = `${zoneIndex}-${lotIndex}`;
+                  const colors = ["#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899", "#06b6d4", "#14b8a6"];
+                  const color = colors[lotIndex % colors.length];
+                  
+                  return (
+                    <PolygonAny
+                      key={lotKey}
+                      positions={lot.latLngs}
+                      pathOptions={{
+                        color: color,
+                        fillColor: color,
+                        fillOpacity: 0.35,
+                        weight: 2,
+                      }}
+                    >
+                      <Popup>
+                        <div className="p-3 min-w-[320px]">
+                          <h4 className="font-bold text-gray-800 mb-1">
+                            {zone.name} - {lot.name}
+                          </h4>
+                          <div className="flex items-center gap-2 text-sm text-gray-600 mb-2">
+                            <Building size={14} />
+                            {zone.htxName}
+                          </div>
+                          <div className="text-xs text-gray-600 mb-3 pb-3 border-b border-gray-200">
+                            <div><span className="font-medium">Loại cây:</span> {zone.cropType || "N/A"}</div>
+                            <div><span className="font-medium">Diện tích lô:</span> {lot.area || "N/A"} ha</div>
+                          </div>
+
+                          {/* Tọa độ của lô */}
+                          {lot.latLngs && lot.latLngs.length > 0 && (
+                            <div className="mb-3 pb-3 border-b border-gray-200">
+                              <h5 className="font-semibold text-xs text-gray-700 mb-2">Tọa độ lô:</h5>
+                              <div className="text-gray-600 font-mono text-[10px] space-y-0.5 bg-gray-50 p-2 rounded max-h-32 overflow-y-auto">
+                                {lot.latLngs.map((coord: [number, number], idx: number) => (
+                                  <div key={idx}>
+                                    {idx + 1}. {coord[0].toFixed(4)}, {coord[1].toFixed(4)}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          <button
+                            onClick={() =>
+                              navigate(`/sysadmin/htx/${zone.htxId}`)
+                            }
+                            className="w-full text-xs text-blue-600 hover:underline font-medium bg-blue-50 py-2 rounded mt-3"
+                          >
+                            Xem chi tiết HTX
+                          </button>
                         </div>
-                        <div className="text-xs text-gray-600 mb-3 pb-3 border-b border-gray-200">
-                          <div><span className="font-medium">Loại cây:</span> {zone.cropType || "N/A"}</div>
-                          <div><span className="font-medium">Diện tích:</span> {zone.area}</div>
-                        </div>
-                        <button
-                          onClick={() =>
-                            navigate(`/sysadmin/htx/${zone.htxId}`)
-                          }
-                          className="w-full text-xs text-blue-600 hover:underline font-medium bg-blue-50 py-2 rounded"
-                        >
-                          Xem chi tiết HTX
-                        </button>
-                      </div>
-                    </Popup>
-                  </PolygonAny>
-                );
+                      </Popup>
+                    </PolygonAny>
+                  );
+                });
               })}
             </MapContainerAny>
           )}
@@ -1392,12 +1430,30 @@ export function SysAdminHTXDetailScreen({
   const { id } = useParams();
   const navigate = useNavigate();
   const htx = htxs.find((h: HTX) => h.id === id);
+  const [htxData, setHtxData] = useState<any>(null);
+  const [loadingHtx, setLoadingHtx] = useState(false);
   const [farmers, setFarmers] = useState<any[]>([]);
   const [loadingFarmers, setLoadingFarmers] = useState(false);
   const [zones, setZones] = useState<any[]>([]);
   const [loadingZones, setLoadingZones] = useState(false);
 
   useEffect(() => {
+    const loadHtxData = async () => {
+      if (!id) return;
+      setLoadingHtx(true);
+      try {
+        const admins = await adminAPI.getAdmins();
+        const admin = admins.find((a: any) => String(a.id) === String(id));
+        if (admin) {
+          setHtxData(admin);
+        }
+      } catch (error) {
+        console.warn("Cannot load HTX data:", error);
+      } finally {
+        setLoadingHtx(false);
+      }
+    };
+
     const loadFarmers = async () => {
       if (!htx || !id) return;
       setLoadingFarmers(true);
@@ -1432,6 +1488,7 @@ export function SysAdminHTXDetailScreen({
       }
     };
 
+    loadHtxData();
     loadFarmers();
     loadPlantingZones();
   }, [htx, id]);
@@ -1624,35 +1681,34 @@ export function SysAdminHTXDetailScreen({
                 ký
               </h3>
               <div className="space-y-3">
-                {htx.documents?.map((doc: any, index: number) => (
-                  <div
-                    key={index}
-                    className="flex items-center justify-between p-3 bg-gray-50 border border-gray-100 rounded-xl"
-                  >
-                    <div className="flex items-center gap-3 overflow-hidden">
-                      <div
-                        className={`p-2 rounded-lg shrink-0 ${doc.type === "pdf" ? "bg-red-100 text-red-600" : "bg-green-100 text-green-600"}`}
-                      >
+                {htxData?.registration_certificate ? (
+                  <div className="flex items-center justify-between p-3 bg-gray-50 border border-gray-100 rounded-xl">
+                    <div className="flex items-center gap-3 overflow-hidden min-w-0">
+                      <div className="p-2 bg-red-100 text-red-600 rounded-lg shrink-0">
                         <FileText size={16} />
                       </div>
                       <div className="min-w-0">
                         <p className="text-sm font-medium text-gray-800 truncate">
-                          {doc.name}
+                          Giấy chứng nhận đăng ký HTX
                         </p>
-                        <p className="text-xs text-gray-500">{doc.size}</p>
+                        <p className="text-xs text-gray-500">
+                          {htxData.registration_certificate.split("/").pop()}
+                        </p>
                       </div>
                     </div>
-                    <button
+                    <a
+                      href={htxData.registration_certificate}
+                      target="_blank"
+                      rel="noopener noreferrer"
                       className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors shrink-0"
-                      title="Tải xuống"
+                      title="Xem tài liệu"
                     >
                       <Download size={16} />
-                    </button>
+                    </a>
                   </div>
-                ))}
-                {(!htx.documents || htx.documents.length === 0) && (
+                ) : (
                   <p className="text-sm text-gray-500 text-center py-4">
-                    Chưa có tài liệu đính kèm
+                    Chưa có tài liệu đăng ký
                   </p>
                 )}
               </div>
