@@ -11,7 +11,7 @@
  * Django Backend API Base URL
  * Hard-coded to production backend for deployment
  */
-export const API_BASE_URL = "https://htxvn.org/api"; // Backend Django remote
+export const API_BASE_URL = "http://127.0.0.1:8000/api"; // Backend Django remote
 
 export const GOOGLE_CLIENT_ID =
   "211407744910-3h79kbm17jrqs4eu6brb7lvvs15acf5i.apps.googleusercontent.com";
@@ -83,7 +83,7 @@ export const API_ENDPOINTS = {
   ORDER_STATUS_HISTORY: "/order-status-history/",
   ORDER_STATUS_HISTORY_DETAIL: (id: number) => `/order-status-history/${id}/`,
 };
-export const MEDIA_BASE_URL = "https://htxvn.org";
+export const MEDIA_BASE_URL = "http://127.0.0.1:8000";
 
 /**
  * Get full URL for media files (PDF, images)

@@ -2949,7 +2949,7 @@ function RegisterScreen({
   const [googlePromptSuppressed, setGooglePromptSuppressed] = useState(false);
 
   const registerGoogleCallback = useCallback(
-    (response: any) => {
+    async (response: any) => {
       console.log("[Google Register Callback] response", response);
       const payload = decodeJwt(response?.credential);
       console.log("[Google Register Callback] decoded payload", payload);
@@ -2958,6 +2958,27 @@ function RegisterScreen({
         setError("Đăng ký Google thất bại. Vui lòng thử lại.");
         return;
       }
+
+      // Check if email already exists in database
+      try {
+        const existingAdmins = await adminAPI.getAdmins();
+        const emailExists = existingAdmins.some(
+          (admin: any) =>
+            admin.google_email &&
+            admin.google_email.toLowerCase() === payload.email.toLowerCase(),
+        );
+
+        if (emailExists) {
+          setError(
+            "Email này đã được đăng ký. Vui lòng sử dụng email khác hoặc đăng nhập.",
+          );
+          return;
+        }
+      } catch (error: any) {
+        console.warn("Lỗi kiểm tra email:", error);
+        // If check fails, continue anyway to avoid blocking user
+      }
+
       onRegisterSuccess({
         email: payload.email,
         password: payload.sub,
@@ -3116,7 +3137,7 @@ function RegisterScreen({
     }
   };
 
-  const handleRegister = (e: React.FormEvent) => {
+  const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
 
@@ -3127,6 +3148,26 @@ function RegisterScreen({
     if (!password) {
       setError("Vui lòng nhập mật khẩu");
       return;
+    }
+
+    // Check if email already exists in database
+    try {
+      const existingAdmins = await adminAPI.getAdmins();
+      const emailExists = existingAdmins.some(
+        (admin: any) =>
+          admin.google_email &&
+          admin.google_email.toLowerCase() === email.trim().toLowerCase(),
+      );
+
+      if (emailExists) {
+        setError(
+          "Email này đã được đăng ký. Vui lòng sử dụng email khác hoặc đăng nhập.",
+        );
+        return;
+      }
+    } catch (error: any) {
+      console.warn("Lỗi kiểm tra email:", error);
+      // If check fails, continue anyway to avoid blocking user
     }
 
     onRegisterSuccess({ email: email.trim(), password });
