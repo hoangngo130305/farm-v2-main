@@ -6,6 +6,7 @@ from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from django_filters.rest_framework import DjangoFilterBackend
 from django.db.models import Q, F
 from django.core.files.storage import default_storage
+import os
 import json
 from uuid import uuid4
 from .models import (
@@ -26,9 +27,48 @@ class AdminViewSet(viewsets.ModelViewSet):
     """ViewSet for Admin management"""
     queryset = Admin.objects.all()
     permission_classes = [AllowAny]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter]
     search_fields = ['name', 'phone', 'google_email']
     filterset_fields = ['phone', 'google_email']
+
+    def _normalize_registration_certificate(self, request, data):
+        """Store uploaded registration certificate file and save its media URL."""
+        uploaded = request.FILES.get('registration_certificate')
+        if not uploaded:
+            return data
+
+        ext = os.path.splitext(uploaded.name)[1] or '.bin'
+        filename = f"admin_registration_certificates/{uuid4().hex}{ext}"
+        saved_path = default_storage.save(filename, uploaded)
+        data['registration_certificate'] = default_storage.url(saved_path)
+        return data
+
+    def create(self, request, *args, **kwargs):
+        data = request.data.copy()
+        data = self._normalize_registration_certificate(request, data)
+        serializer = AdminCreateSerializer(data=data)
+        if serializer.is_valid():
+            admin = serializer.save()
+            response_serializer = AdminSerializer(admin)
+            return Response(response_serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def update(self, request, *args, **kwargs):
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        data = request.data.copy()
+        data = self._normalize_registration_certificate(request, data)
+        serializer = AdminCreateSerializer(instance, data=data, partial=partial)
+        if serializer.is_valid():
+            admin = serializer.save()
+            response_serializer = AdminSerializer(admin)
+            return Response(response_serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def partial_update(self, request, *args, **kwargs):
+        kwargs['partial'] = True
+        return self.update(request, *args, **kwargs)
 
     def get_serializer_class(self):
         if self.action in ['create', 'update', 'partial_update']:
@@ -63,12 +103,17 @@ class AdminViewSet(viewsets.ModelViewSet):
         if admin:
             serializer = AdminSerializer(admin)
             return Response({'status': 'success', 'data': serializer.data})
-        return Response({'error': 'Invalid credentials'}, status=status.HTTP_401_UNAUTHORIZED)
+        return Response(
+            {'error': 'Thông tin đăng nhập HTX không đúng. Vui lòng kiểm tra lại số điện thoại, email hoặc mật khẩu/PIN.'},
+            status=status.HTTP_401_UNAUTHORIZED,
+        )
 
     @action(detail=False, methods=['post'], permission_classes=[AllowAny])
     def register(self, request):
         """Admin registration"""
-        serializer = AdminCreateSerializer(data=request.data)
+        data = request.data.copy()
+        data = self._normalize_registration_certificate(request, data)
+        serializer = AdminCreateSerializer(data=data)
         if serializer.is_valid():
             admin = serializer.save()
             response_serializer = AdminSerializer(admin)
@@ -101,7 +146,10 @@ class SysAdminViewSet(viewsets.ModelViewSet):
         if sysadmin and sysadmin.check_password(password):
             serializer = SysAdminSerializer(sysadmin)
             return Response({'status': 'success', 'data': serializer.data})
-        return Response({'error': 'Invalid credentials'}, status=status.HTTP_401_UNAUTHORIZED)
+        return Response(
+            {'error': 'Email hoặc mật khẩu quản trị hệ thống không đúng. Vui lòng kiểm tra và thử lại.'},
+            status=status.HTTP_401_UNAUTHORIZED,
+        )
 
     @action(detail=False, methods=['post'], permission_classes=[AllowAny])
     def register(self, request):
@@ -198,7 +246,10 @@ class FarmerViewSet(viewsets.ModelViewSet):
         if farmer:
             serializer = FarmerSerializer(farmer)
             return Response({'status': 'success', 'data': serializer.data})
-        return Response({'error': 'Invalid credentials'}, status=status.HTTP_401_UNAUTHORIZED)
+        return Response(
+            {'error': 'Số điện thoại hoặc mã PIN không đúng. Vui lòng kiểm tra và thử lại.'},
+            status=status.HTTP_401_UNAUTHORIZED,
+        )
 
     @action(detail=False, methods=['post'], permission_classes=[AllowAny])
     def register(self, request):

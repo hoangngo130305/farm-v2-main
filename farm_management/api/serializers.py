@@ -151,13 +151,49 @@ class FarmerSerializer(serializers.ModelSerializer):
 class FarmerCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Farmer
-        fields = ['admin', 'phone', 'pin', 'cccd', 'full_name', 'birth_year', 'managed_lot', 'google_id', 'google_email']
+        fields = ['id', 'admin', 'phone', 'pin', 'cccd', 'full_name', 'birth_year', 'managed_lot', 'google_id', 'google_email']
+        read_only_fields = ['id']
         extra_kwargs = {
             'admin': {'required': True},
         }
 
+    def validate(self, attrs):
+        """Normalize optional text fields so blank strings do not violate unique constraints."""
+        nullable_fields = [
+            'phone',
+            'pin',
+            'cccd',
+            'birth_year',
+            'managed_lot',
+            'google_id',
+            'google_email',
+        ]
+
+        for field in nullable_fields:
+            value = attrs.get(field, serializers.empty)
+            if value is serializers.empty:
+                continue
+            if isinstance(value, str):
+                value = value.strip()
+                attrs[field] = value or None
+
+        full_name = attrs.get('full_name')
+        if isinstance(full_name, str):
+            attrs['full_name'] = full_name.strip()
+
+        cccd = attrs.get('cccd')
+        if self.instance is None and not cccd:
+            raise serializers.ValidationError({
+                'cccd': 'Số CCCD là bắt buộc khi tạo nông dân mới.'
+            })
+
+        return attrs
+
     def validate_phone(self, value):
         """Validate phone uniqueness - exclude current instance if updating"""
+        if isinstance(value, str):
+            value = value.strip()
+
         if not value:
             return value
         
@@ -173,9 +209,15 @@ class FarmerCreateSerializer(serializers.ModelSerializer):
         return value
 
     def validate_cccd(self, value):
-        """Validate CCCD uniqueness - exclude current instance if updating"""
+        """Validate CCCD format and uniqueness - exclude current instance if updating"""
+        if isinstance(value, str):
+            value = value.strip()
+
         if not value:
             return value
+
+        if not value.isdigit() or len(value) != 12:
+            raise serializers.ValidationError("Số CCCD phải gồm đúng 12 chữ số.")
         
         queryset = Farmer.objects.filter(cccd=value)
         

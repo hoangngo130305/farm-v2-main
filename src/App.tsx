@@ -433,8 +433,18 @@ const USERS = [
 ];
 
 function mapApiFarmer(farmer: any): Farmer {
+  const fallbackId = [
+    farmer?.phone,
+    farmer?.cccd,
+    farmer?.google_email,
+    farmer?.full_name,
+    Date.now(),
+  ]
+    .filter(Boolean)
+    .join("-");
+
   return {
-    id: String(farmer.id),
+    id: String(farmer?.id ?? fallbackId),
     admin: String(farmer.admin),
     adminName: farmer.admin_name || farmer.adminName || "",
     phone: farmer.phone || "",
@@ -692,6 +702,13 @@ function normalizeTaskConfig(task: any): TaskConfig {
   };
 }
 
+function findTaskConfigById(
+  tasksConfig: TaskConfig[],
+  taskId: string | number | undefined,
+) {
+  return tasksConfig.find((task) => String(task.id) === String(taskId));
+}
+
 // ============================================================
 // HELPER FUNCTIONS - currentUser persistence
 
@@ -812,11 +829,16 @@ async function createDefaultTasksForAdmin(adminId: string | number) {
 const CURRENT_USER_STORAGE_KEY = "currentUser_farm_management";
 const CURRENT_USER_ROLE_KEY = "currentUserRole_farm_management";
 
+const normalizeStoredUserRole = (user: any) => user?.role || "unknown";
+
 const saveCurrentUserToStorage = (user: any) => {
   try {
     if (user) {
       localStorage.setItem(CURRENT_USER_STORAGE_KEY, JSON.stringify(user));
-      localStorage.setItem(CURRENT_USER_ROLE_KEY, user.role || "unknown");
+      localStorage.setItem(
+        CURRENT_USER_ROLE_KEY,
+        normalizeStoredUserRole(user),
+      );
       console.log("✅ [AUTH] Saved currentUser to localStorage:", user);
     } else {
       localStorage.removeItem(CURRENT_USER_STORAGE_KEY);
@@ -835,9 +857,10 @@ const loadCurrentUserFromStorage = (): any => {
 
     if (stored) {
       const user = JSON.parse(stored);
+      const normalizedRole = normalizeStoredUserRole(user);
 
       // Validate that stored user matches stored role
-      if (user.role !== storedRole) {
+      if ((storedRole || "unknown") !== normalizedRole) {
         console.warn(
           "❌ [AUTH] User role mismatch - clearing corrupted user data",
         );
@@ -887,64 +910,11 @@ export default function App() {
   const [view, setView] = useState<"list" | "add">("list");
   const [selectedTaskConfig, setSelectedTaskConfig] =
     useState<TaskConfig | null>(null);
-  const [tasksConfig, setTasksConfig] = useState<TaskConfig[]>(() => {
-    const saved = window.localStorage.getItem("tasksConfig");
-    if (!saved) return [];
-    try {
-      const parsed = JSON.parse(saved);
-      if (!Array.isArray(parsed)) return [];
-      return parsed.map(normalizeTaskConfig);
-    } catch {
-      return [];
-    }
-  });
-  const [taskCategories, setTaskCategories] = useState<TaskCategory[]>(() => {
-    const saved = window.localStorage.getItem("taskCategories");
-    if (!saved) return [];
-    try {
-      const parsed = JSON.parse(saved);
-      if (!Array.isArray(parsed)) return [];
-      return parsed.map((category: any) => ({
-        id: String(category.id),
-        name: category.name || category.title || "Danh mục",
-        taskIds: Array.isArray(category.taskIds)
-          ? category.taskIds.map(String)
-          : Array.isArray(category.task_ids)
-            ? category.task_ids.map(String)
-            : [],
-      }));
-    } catch {
-      return [];
-    }
-  });
+  const [tasksConfig, setTasksConfig] = useState<TaskConfig[]>([]);
+  const [taskCategories, setTaskCategories] = useState<TaskCategory[]>([]);
   const tasksList = Array.from(
     new Set(tasksConfig.map((t) => t.defaultValues.task)),
   );
-
-  useEffect(() => {
-    const serializableTasks = tasksConfig.map((task) => ({
-      ...task,
-      icon: undefined,
-      iconName:
-        task.iconName ||
-        (typeof task.icon === "function"
-          ? task.icon.name
-          : typeof task.icon === "string"
-            ? task.icon
-            : "Leaf"),
-    }));
-    window.localStorage.setItem(
-      "tasksConfig",
-      JSON.stringify(serializableTasks),
-    );
-  }, [tasksConfig]);
-
-  useEffect(() => {
-    window.localStorage.setItem(
-      "taskCategories",
-      JSON.stringify(taskCategories),
-    );
-  }, [taskCategories]);
 
   const [farmers, setFarmers] = useState<Farmer[]>([]);
   const [zones, setZones] = useState<PlantingZone[]>([]);
@@ -1008,6 +978,20 @@ export default function App() {
   // ============================================================
   useEffect(() => {
     const fetchInitialData = async () => {
+      setTasksConfig([]);
+      setTaskCategories([]);
+
+      let processAdminId: string | undefined;
+      if (currentUser?.role === "admin" && currentUser?.id) {
+        processAdminId = String(currentUser.id);
+      } else if (!currentUser?.role && currentUser?.admin_id) {
+        processAdminId = String(currentUser.admin_id);
+      }
+
+      if (processAdminId) {
+        await createDefaultTasksForAdmin(processAdminId);
+      }
+
       try {
         // Load farmers - filter by admin for admin users
         if (currentUser?.id && currentUser?.role === "admin") {
@@ -1094,11 +1078,8 @@ export default function App() {
         // Load tasks filtered by admin_id (HTX)
         let adminId: string | undefined;
         if (currentUser?.role === "admin") {
-          // Admin: use their own id
           adminId = String(currentUser.id);
-          await createDefaultTasksForAdmin(adminId);
         } else if (currentUser?.admin_id && !currentUser?.role) {
-          // Farmer: use their HTX's admin_id
           adminId = String(currentUser.admin_id);
         }
 
@@ -1307,7 +1288,7 @@ export default function App() {
               }}
             />
           ) : (
-            <Navigate to="/sysadmin_login" replace />
+            <Navigate to="/" replace />
           )
         }
       />
@@ -1589,7 +1570,7 @@ export default function App() {
               </nav>
             </div>
           ) : (
-            <Navigate to="/login" replace />
+            <Navigate to="/" replace />
           )
         }
       />
@@ -1727,47 +1708,59 @@ function TaskGrid({
 }) {
   return (
     <div className="space-y-5">
-      {taskCategories.map((category) => (
-        <div key={category.id}>
-          <h2 className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-3">
-            {category.name}
-          </h2>
-          <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
-            {category.taskIds.map((taskId) => {
-              const task = tasksConfig.find((t) => t.id === taskId);
-              if (!task) return null;
-              const Icon = task.icon;
-              return (
+      {taskCategories.map((category) => {
+        const categoryTasks = category.taskIds
+          .map((taskId) => findTaskConfigById(tasksConfig, taskId))
+          .filter(Boolean) as TaskConfig[];
+        const isManagementCategory =
+          category.id === "quan_ly" ||
+          category.name.trim().toLowerCase().includes("quản lý");
+
+        return (
+          <div key={category.id}>
+            <h2 className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-3">
+              {category.name}
+            </h2>
+            <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
+              {categoryTasks.map((task) => {
+                const Icon = task.icon;
+                return (
+                  <button
+                    key={task.id}
+                    onClick={() => onSelectTask(task)}
+                    className="flex flex-col items-center justify-start gap-2 p-2 rounded-xl bg-white shadow-sm border border-gray-100 hover:bg-gray-50 active:scale-95 transition-all"
+                  >
+                    <div className={`p-3 rounded-full ${task.color}`}>
+                      <Icon size={24} strokeWidth={1.5} />
+                    </div>
+                    <span className="text-[10px] sm:text-xs text-center font-medium leading-tight text-gray-700">
+                      {task.name}
+                    </span>
+                  </button>
+                );
+              })}
+              {isManagementCategory && (
                 <button
-                  key={task.id}
-                  onClick={() => onSelectTask(task)}
+                  onClick={() => onSelectTask(null)}
                   className="flex flex-col items-center justify-start gap-2 p-2 rounded-xl bg-white shadow-sm border border-gray-100 hover:bg-gray-50 active:scale-95 transition-all"
                 >
-                  <div className={`p-3 rounded-full ${task.color}`}>
-                    <Icon size={24} strokeWidth={1.5} />
+                  <div className="p-3 rounded-full bg-gray-100 text-gray-600">
+                    <Plus size={24} strokeWidth={1.5} />
                   </div>
                   <span className="text-[10px] sm:text-xs text-center font-medium leading-tight text-gray-700">
-                    {task.name}
+                    Khác
                   </span>
                 </button>
-              );
-            })}
-            {category.id === "quan_ly" && (
-              <button
-                onClick={() => onSelectTask(null)}
-                className="flex flex-col items-center justify-start gap-2 p-2 rounded-xl bg-white shadow-sm border border-gray-100 hover:bg-gray-50 active:scale-95 transition-all"
-              >
-                <div className="p-3 rounded-full bg-gray-100 text-gray-600">
-                  <Plus size={24} strokeWidth={1.5} />
-                </div>
-                <span className="text-[10px] sm:text-xs text-center font-medium leading-tight text-gray-700">
-                  Khác
-                </span>
-              </button>
+              )}
+            </div>
+            {category.taskIds.length > 0 && categoryTasks.length === 0 && (
+              <p className="mt-3 text-sm text-gray-500">
+                Chưa tải được cấu hình quy trình cho danh mục này.
+              </p>
             )}
           </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
@@ -4258,6 +4251,8 @@ function OnboardHTXScreen({
   const [address, setAddress] = useState("");
   const [representative, setRepresentative] = useState("");
   const [fileName, setFileName] = useState("");
+  const [registrationCertificateFile, setRegistrationCertificateFile] =
+    useState<File | null>(null);
   const [error, setError] = useState("");
   const [registrationSuccess, setRegistrationSuccess] = useState(false);
 
@@ -4275,9 +4270,14 @@ function OnboardHTXScreen({
         name: htxName || "HTX Mới",
         address,
         representative,
-        registration_certificate: fileName,
         google_email: pendingRegistration.email,
       };
+
+      if (registrationCertificateFile) {
+        payload.registration_certificate_file = registrationCertificateFile;
+      } else {
+        payload.registration_certificate = fileName;
+      }
 
       if (pendingRegistration.googleId) {
         payload.google_id = pendingRegistration.googleId;
@@ -4396,7 +4396,9 @@ function OnboardHTXScreen({
                 className="hidden"
                 onChange={(e) => {
                   if (e.target.files && e.target.files[0]) {
-                    setFileName(e.target.files[0].name);
+                    const selectedFile = e.target.files[0];
+                    setRegistrationCertificateFile(selectedFile);
+                    setFileName(selectedFile.name);
                   }
                 }}
               />
@@ -4808,8 +4810,12 @@ function FarmerManagementScreen({
       errors.pin = "⚠️ Mã PIN phải có đúng 4 số";
     }
 
-    // NOTE: CCCD validation removed - it's an optional field
-    // Input already limits to 12 digits, user can leave empty or enter partial value
+    // Validation CCCD
+    if (view === "add" && !newFarmer.cccd) {
+      errors.cccd = "⚠️ Vui lòng nhập số CCCD";
+    } else if (newFarmer.cccd && !isValidCCCD(newFarmer.cccd)) {
+      errors.cccd = "⚠️ Số CCCD phải có đúng 12 số";
+    }
 
     setValidationErrors(errors);
     return Object.keys(errors).length === 0;
@@ -4827,12 +4833,12 @@ function FarmerManagementScreen({
     console.log("handleSaveFarmer - view:", view);
 
     const payload: any = {
-      phone: newFarmer.phone,
-      pin: newFarmer.pin || "0000",
-      cccd: newFarmer.cccd || "",
+      phone: newFarmer.phone?.trim() || null,
+      pin: newFarmer.pin?.trim() || "0000",
+      cccd: newFarmer.cccd?.trim() || null,
       full_name: newFarmer.fullName,
-      birth_year: newFarmer.birthYear || "",
-      managed_lot: newFarmer.managedLot || "",
+      birth_year: newFarmer.birthYear?.trim() || null,
+      managed_lot: newFarmer.managedLot?.trim() || null,
     };
 
     // Include admin based on mode
@@ -5173,10 +5179,14 @@ function FarmerManagementScreen({
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Số CCCD (12 số)
+                    Số CCCD (12 số){" "}
+                    {view === "add" && <span className="text-red-500">*</span>}
                   </label>
                   <input
                     type="text"
+                    required={view === "add"}
+                    inputMode="numeric"
+                    pattern="\d{12}"
                     value={newFarmer.cccd || ""}
                     onChange={(e) => {
                       const value = e.target.value
@@ -6914,51 +6924,61 @@ function ProcessManagementScreen({
               </button>
             </div>
 
-            {taskCategories.map((category) => (
-              <div
-                key={category.id}
-                className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden"
-              >
-                <div className="bg-gray-50 px-4 py-3 border-b border-gray-100">
-                  <h3 className="font-bold text-gray-700">{category.name}</h3>
-                </div>
-                <div className="divide-y divide-gray-100">
-                  {category.taskIds.map((taskId) => {
-                    const task = tasksConfig.find((t) => t.id === taskId);
-                    if (!task) return null;
-                    const Icon = task.icon;
-                    return (
-                      <div
-                        key={task.id}
-                        className="p-4 flex items-center justify-between hover:bg-gray-50 transition-colors"
-                      >
-                        <div className="flex items-center gap-3">
-                          <div className={`p-2 rounded-lg ${task.color}`}>
-                            <Icon size={20} />
-                          </div>
-                          <div>
-                            <p className="font-medium text-gray-800">
-                              {task.name}
-                            </p>
-                            <p className="text-xs text-gray-500">
-                              {task.requiresMaterials
-                                ? "Có sử dụng vật tư/thuốc"
-                                : "Không dùng vật tư"}
-                            </p>
-                          </div>
-                        </div>
-                        <button
-                          onClick={() => handleEdit(task)}
-                          className="text-emerald-600 hover:text-emerald-800 font-medium text-sm px-3 py-1.5 rounded hover:bg-emerald-50 transition-colors"
+            {taskCategories.map((category) => {
+              const categoryTasks = category.taskIds
+                .map((taskId) => findTaskConfigById(tasksConfig, taskId))
+                .filter(Boolean) as TaskConfig[];
+
+              return (
+                <div
+                  key={category.id}
+                  className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden"
+                >
+                  <div className="bg-gray-50 px-4 py-3 border-b border-gray-100">
+                    <h3 className="font-bold text-gray-700">{category.name}</h3>
+                  </div>
+                  <div className="divide-y divide-gray-100">
+                    {categoryTasks.map((task) => {
+                      const Icon = task.icon;
+                      return (
+                        <div
+                          key={task.id}
+                          className="p-4 flex items-center justify-between hover:bg-gray-50 transition-colors"
                         >
-                          Cấu hình
-                        </button>
-                      </div>
-                    );
-                  })}
+                          <div className="flex items-center gap-3">
+                            <div className={`p-2 rounded-lg ${task.color}`}>
+                              <Icon size={20} />
+                            </div>
+                            <div>
+                              <p className="font-medium text-gray-800">
+                                {task.name}
+                              </p>
+                              <p className="text-xs text-gray-500">
+                                {task.requiresMaterials
+                                  ? "Có sử dụng vật tư/thuốc"
+                                  : "Không dùng vật tư"}
+                              </p>
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => handleEdit(task)}
+                            className="text-emerald-600 hover:text-emerald-800 font-medium text-sm px-3 py-1.5 rounded hover:bg-emerald-50 transition-colors"
+                          >
+                            Cấu hình
+                          </button>
+                        </div>
+                      );
+                    })}
+                    {category.taskIds.length > 0 &&
+                      categoryTasks.length === 0 && (
+                        <div className="p-4 text-sm text-gray-500">
+                          Chưa tải được cấu hình quy trình cho danh mục này.
+                        </div>
+                      )}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         ) : (
           currentTask && (

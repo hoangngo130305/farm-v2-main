@@ -32,6 +32,7 @@ import {
 } from "lucide-react";
 import { MapContainer, TileLayer, Polygon, Popup, useMap } from "react-leaflet";
 import { authAPI, adminAPI, farmAPI } from "./lib/api";
+import { getMediaUrl } from "./lib/config";
 import "leaflet/dist/leaflet.css";
 
 type HTX = {
@@ -145,6 +146,25 @@ function normalizeVietGAPRequest(req: any, htxs: any[] = []): any {
       (req.created_at ? req.created_at.split("T")[0] : undefined) ||
       new Date().toISOString().split("T")[0],
   };
+}
+
+function resolveAdminRegistrationCertificateUrl(value?: string | null): string {
+  if (!value) return "";
+
+  const trimmed = String(value).trim();
+  if (!trimmed) return "";
+
+  if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+    return trimmed;
+  }
+
+  if (trimmed.startsWith("/")) {
+    return getMediaUrl(trimmed);
+  }
+
+  // Legacy value can be only a file name (ex: "R.png").
+  // Convert it to backend media URL so browser does not resolve it as a relative frontend route.
+  return getMediaUrl(`/media/${trimmed}`);
 }
 
 export function SysAdminLoginScreen({
@@ -299,7 +319,10 @@ export function SysAdminApp({
               : "",
             status: admin.status || "pending",
             farmers: farmerCountByAdmin[String(admin.id)] || 0,
-            area: "0 ha",
+            area:
+              admin.area || admin.total_area
+                ? `${admin.area || admin.total_area} ha`
+                : "0 ha",
             activeLogs: 0,
             documents: [],
             zones: [],
@@ -536,7 +559,7 @@ export function SysAdminDashboardScreen({
                           <Users size={14} /> {htx.farmers} nông dân
                         </div>
                         <div className="text-xs text-gray-400">
-                          Diện tích: {htx.area}
+                          Diện tích: {htx.area || "0 ha"}
                         </div>
                       </td>
                       <td className="p-4">
@@ -1472,6 +1495,11 @@ export function SysAdminHTXDetailScreen({
   const [loadingZones, setLoadingZones] = useState(false);
   const [totalArea, setTotalArea] = useState<string>("0 ha");
 
+  const registrationCertificateRaw = htxData?.registration_certificate || "";
+  const registrationCertificateUrl = resolveAdminRegistrationCertificateUrl(
+    registrationCertificateRaw,
+  );
+
   useEffect(() => {
     const loadHtxData = async () => {
       if (!id) return;
@@ -1752,15 +1780,24 @@ export function SysAdminHTXDetailScreen({
                         </p>
                       </div>
                     </div>
-                    <a
-                      href={htxData.registration_certificate}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors shrink-0"
-                      title="Xem tài liệu"
-                    >
-                      <Download size={16} />
-                    </a>
+                    {registrationCertificateUrl ? (
+                      <a
+                        href={registrationCertificateUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors shrink-0"
+                        title="Xem tài liệu"
+                      >
+                        <Download size={16} />
+                      </a>
+                    ) : (
+                      <span
+                        className="p-2 text-gray-400 rounded-lg shrink-0 cursor-not-allowed"
+                        title="Trường này hiện chỉ là mã tài liệu, chưa có đường dẫn file"
+                      >
+                        <Download size={16} />
+                      </span>
+                    )}
                   </div>
                 ) : (
                   <p className="text-sm text-gray-500 text-center py-4">

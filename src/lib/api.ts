@@ -615,17 +615,44 @@ export const authAPI = {
     address?: string;
     representative?: string;
     registration_certificate?: string;
+    registration_certificate_file?: File;
     google_email?: string;
     google_id?: string;
   }): Promise<any> => {
-    const response = await fetch(
-      `${API_BASE_URL}${API_ENDPOINTS.AUTH.ADMIN_REGISTER}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      },
-    );
+    const hasCertificateFile =
+      typeof File !== "undefined" &&
+      payload.registration_certificate_file instanceof File;
+
+    let response: Response;
+    if (hasCertificateFile) {
+      const formData = new FormData();
+      Object.entries(payload).forEach(([key, value]) => {
+        if (value === undefined || value === null) return;
+        if (key === "registration_certificate_file") return;
+        formData.append(key, String(value));
+      });
+      formData.append(
+        "registration_certificate",
+        payload.registration_certificate_file as File,
+      );
+
+      response = await fetch(
+        `${API_BASE_URL}${API_ENDPOINTS.AUTH.ADMIN_REGISTER}`,
+        {
+          method: "POST",
+          body: formData,
+        },
+      );
+    } else {
+      response = await fetch(
+        `${API_BASE_URL}${API_ENDPOINTS.AUTH.ADMIN_REGISTER}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        },
+      );
+    }
 
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
